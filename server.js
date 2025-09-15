@@ -43,6 +43,8 @@ app.get("/auth/google/callback", async (req, res) => {
       headers: { Authorization: `Bearer ${tokens.access_token}` }
     });
     const profile = await profileRes.json();
+    
+    console.log("✅ Google profile:", { id: profile.id, email: profile.email, name: profile.name });
 
     // 3️⃣ Check if user exists in DB
     let { data: user, error } = await supabase
@@ -54,8 +56,10 @@ app.get("/auth/google/callback", async (req, res) => {
     let salt;
     if (user && user.salt) {
       salt = user.salt;
+      console.log("✅ Using existing salt for user:", profile.email);
     } else {
       salt = generateRandomness();
+      console.log("✅ Generated new salt for user:", profile.email);
       await supabase.from("users").insert([
         {
           id: profile.id,
@@ -67,15 +71,14 @@ app.get("/auth/google/callback", async (req, res) => {
       ]);
     }
 
-    // 4️⃣ zkLogin nonce with correct parameters
-    const nonce = generateNonce(
-      new Ed25519Keypair().getPublicKey(), // ephemeral public key
-      BigInt(Date.now() + 24 * 60 * 60 * 1000), // max epoch (24h from now)
-      randomness // your salt/randomness
-    );
-
-    // 5️⃣ Ephemeral keypair + zkLogin signature → derive wallet
+    // 4️⃣ Create ephemeral keypair first
     const ephemeralKeypair = new Ed25519Keypair();
+    
+    // Generate nonce with correct parameters
+    const maxEpoch = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // 24 hours from now
+    const nonce = generateNonce(ephemeralKeypair.getPublicKey(), maxEpoch, salt);
+
+    // 5️⃣ Generate zkLogin signature (ephemeralKeypair already created above)
     
     // ✅ IMPROVED: Better error handling for zkLogin signature generation
     let zkLoginSig;
@@ -86,7 +89,7 @@ app.get("/auth/google/callback", async (req, res) => {
           ephemeralKeyPair: ephemeralKeypair,
           userSalt: salt,
           jwtRandomness: salt,
-          maxEpoch: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // 24 hours
+          maxEpoch: maxEpoch,
           keyClaimName: "sub"
         }
       });
@@ -133,8 +136,6 @@ app.get("/getProfile", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-
 
 
 
