@@ -1,85 +1,124 @@
+// server.js
 import express from "express";
 import bodyParser from "body-parser";
+import fetch from "node-fetch";
 import { jwtDecode } from "jwt-decode";
 import { generateNonce, generateRandomness, getZkLoginSignature } from "@mysten/zklogin";
-import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";
-import supabase from "./supabaseClient.js"; // your Supabase client
+import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519.js";
+import supabase from "./supabaseClient.js"; // ✅ make sure supabaseClient.js exists
 
 const app = express();
 app.use(bodyParser.json());
 
-app.post("/auth/google/callback", async (req, res) => {
+const PORT = process.env.PORT || 3000;
+
+// Temporary in-memory session store for Unity polling
+const sessions = {}; // { state: profile }
+
+// 🔹 Google OAuth callback (with zkLogin integration)
+app.get("/auth/google/callback", async (req, res) => {
+  const { code, state } = req.query;
+
   try {
-    const { credential } = req.body;
-    if (!credential) return res.status(400).json({ error: "Missing Google credential" });
+    // 1️⃣ Exchange code for tokens
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        code,
+        redirect_uri: process.env.REDIRECT_URI,
+        grant_type: "authorization_code"
+      })
+    });
+    const tokens = await tokenRes.json();
 
-    const decoded = jwtDecode(credential);
+    if (tokens.error) {
+      console.error("Token exchange failed:", tokens);
+      return res.status(400).send("Token exchange failed");
+    }
 
-    // 1️⃣ Check if user exists in DB
+    // 2️⃣ Fetch Google profile
+    const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+    const profile = await profileRes.json();
+
+    // 3️⃣ Check if user exists in DB
     let { data: user, error } = await supabase
       .from("users")
       .select("id, email, name, picture, sui_wallet, salt")
-      .eq("email", decoded.email)
+      .eq("email", profile.email)
       .single();
 
     let salt;
     if (user && user.salt) {
-      // User already exists → use stored salt
       salt = user.salt;
     } else {
-      // New user → generate and store salt
       salt = generateRandomness();
-
-      const { error: insertErr } = await supabase.from("users").insert([
+      await supabase.from("users").insert([
         {
-          email: decoded.email,
-          name: decoded.name,
-          picture: decoded.picture,
-          salt,
-        },
+          id: profile.id,
+          email: profile.email,
+          name: profile.name,
+          picture: profile.picture,
+          salt
+        }
       ]);
-      if (insertErr) throw insertErr;
     }
 
-    // 2️⃣ Generate zkLogin nonce
-    const nonce = generateNonce(salt, decoded.sub);
+    // 4️⃣ zkLogin nonce
+    const nonce = generateNonce(salt, profile.id);
 
-    // 3️⃣ Ephemeral keypair for login proof
+    // 5️⃣ Ephemeral keypair + zkLogin signature → derive wallet
     const ephemeralKeypair = new Ed25519Keypair();
-
-    // 4️⃣ zkLogin signature → derive wallet
     const zkLoginSig = await getZkLoginSignature({
-      jwt: credential,
+      jwt: tokens.id_token,
       ephemeralKeypair,
       nonce,
-      salt,
+      salt
     });
+
     const suiWallet = zkLoginSig.address;
 
-    // 5️⃣ Update user with wallet if not stored
+    // 6️⃣ Update user wallet if missing
     if (!user?.sui_wallet) {
       await supabase
         .from("users")
         .update({ sui_wallet: suiWallet })
-        .eq("email", decoded.email);
+        .eq("email", profile.email);
     }
 
-    // 6️⃣ Return profile + wallet
-    res.json({
-      id: decoded.sub,
-      email: decoded.email,
-      name: decoded.name,
-      picture: decoded.picture,
-      suiWallet,
-    });
+    // 7️⃣ Store session for Unity polling
+    sessions[state] = {
+      id: profile.id,
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+      suiWallet
+    };
+
+    res.send("✅ Login successful! You can return to your game.");
   } catch (err) {
-    console.error("zkLogin persistent error:", err);
-    res.status(500).json({ error: "zkLogin persistent integration failed", details: err.message });
+    console.error("Google callback error:", err);
+    res.status(500).send("Auth failed.");
   }
 });
 
-app.listen(3000, () => console.log("Server running on port 3000"));
+// 🔹 Unity polling endpoint
+app.get("/getProfile", (req, res) => {
+  const { state } = req.query;
 
+  if (sessions[state]) {
+    res.json(sessions[state]);
+    delete sessions[state]; // one-time fetch
+  } else {
+    res.status(404).send("Not ready");
+  }
+});
+
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 
 
