@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@mysten/sui.js": "^0.54.1",
     "@mysten/zklogin": "^0.8.1",
     "@supabase/supabase-js": "^2.57.4",
     "cors": "^2.8.5",
