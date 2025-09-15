@@ -1,89 +1,85 @@
 import express from "express";
-import fetch from "node-fetch";
-import { createClient } from "@supabase/supabase-js";
+import bodyParser from "body-parser";
+import { jwtDecode } from "jwt-decode";
+import { generateNonce, generateRandomness, getZkLoginSignature } from "@mysten/zklogin";
+import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";
+import supabase from "./supabaseClient.js"; // your Supabase client
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(bodyParser.json());
 
-// Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-
-// Temporary in-memory session store
-const sessions = {}; // { state: profile }
-
-// Google callback
-app.get("/auth/google/callback", async (req, res) => {
-  const { code, state } = req.query;
-
+app.post("/auth/google/callback", async (req, res) => {
   try {
-    // Exchange code for tokens
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        code,
-        redirect_uri: "https://rinoco.onrender.com/auth/google/callback",
-        grant_type: "authorization_code"
-      })
-    });
-    const tokens = await tokenRes.json();
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ error: "Missing Google credential" });
 
-    if (tokens.error) {
-      console.error("Token exchange failed:", tokens);
-      return res.status(400).send("Token exchange failed");
+    const decoded = jwtDecode(credential);
+
+    // 1️⃣ Check if user exists in DB
+    let { data: user, error } = await supabase
+      .from("users")
+      .select("id, email, name, picture, sui_wallet, salt")
+      .eq("email", decoded.email)
+      .single();
+
+    let salt;
+    if (user && user.salt) {
+      // User already exists → use stored salt
+      salt = user.salt;
+    } else {
+      // New user → generate and store salt
+      salt = generateRandomness();
+
+      const { error: insertErr } = await supabase.from("users").insert([
+        {
+          email: decoded.email,
+          name: decoded.name,
+          picture: decoded.picture,
+          salt,
+        },
+      ]);
+      if (insertErr) throw insertErr;
     }
 
-    // Fetch Google profile
-    const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    // 2️⃣ Generate zkLogin nonce
+    const nonce = generateNonce(salt, decoded.sub);
+
+    // 3️⃣ Ephemeral keypair for login proof
+    const ephemeralKeypair = new Ed25519Keypair();
+
+    // 4️⃣ zkLogin signature → derive wallet
+    const zkLoginSig = await getZkLoginSignature({
+      jwt: credential,
+      ephemeralKeypair,
+      nonce,
+      salt,
     });
-    const profile = await profileRes.json();
+    const suiWallet = zkLoginSig.address;
 
-    // Save to Supabase
-    const { error } = await supabase.from("users").upsert({
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      picture: profile.picture
+    // 5️⃣ Update user with wallet if not stored
+    if (!user?.sui_wallet) {
+      await supabase
+        .from("users")
+        .update({ sui_wallet: suiWallet })
+        .eq("email", decoded.email);
+    }
+
+    // 6️⃣ Return profile + wallet
+    res.json({
+      id: decoded.sub,
+      email: decoded.email,
+      name: decoded.name,
+      picture: decoded.picture,
+      suiWallet,
     });
-
-    if (error) console.error("Supabase error:", error);
-
-    // Save in memory for Unity
-    sessions[state] = {
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      picture: profile.picture,
-      suiWallet: null
-    };
-
-    res.send("✅ Login successful! You can return to your game.");
   } catch (err) {
-    console.error("Google callback error:", err);
-    res.status(500).send("Auth failed.");
+    console.error("zkLogin persistent error:", err);
+    res.status(500).json({ error: "zkLogin persistent integration failed", details: err.message });
   }
 });
 
-// Unity polling
-app.get("/getProfile", (req, res) => {
-  const { state } = req.query;
+app.listen(3000, () => console.log("Server running on port 3000"));
 
-  if (sessions[state]) {
-    res.json(sessions[state]);
-    delete sessions[state]; // one-time fetch
-  } else {
-    res.status(404).send("Not ready");
-  }
-});
-
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
 
 
 
