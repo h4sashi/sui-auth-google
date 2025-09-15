@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { OAuth2Client } from 'google-auth-library';
+import { google } from 'googleapis';
 import { jwtToAddress } from '@mysten/zklogin';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
@@ -19,84 +20,96 @@ const supabase = createSupabaseClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// helper
 function generateSalt() {
   return BigInt('0x' + crypto.randomBytes(16).toString('hex')).toString();
 }
 
-// Google login → zkLogin
-app.post('/auth/google-login', async (req, res) => {
-  const { id_token } = req.body;
-  if (!id_token) return res.status(400).json({ error: 'Missing id_token' });
+// --- OAUTH2 client for redirect flow ---
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.REDIRECT_URI // e.g. https://your-app.onrender.com/auth/google/callback
+);
 
-  // 1. Verify Google token
-  let payload;
+// STEP 1: Redirect Unity user → Google login
+app.get('/auth/google', (req, res) => {
+  const state = req.query.state || crypto.randomBytes(8).toString('hex');
+
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['profile', 'email'],
+    state,
+  });
+
+  res.redirect(url);
+});
+
+// STEP 2: Handle Google OAuth callback
+app.get('/auth/google/callback', async (req, res) => {
+  const code = req.query.code;
+  const state = req.query.state;
+
   try {
+    // Exchange code for tokens
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+
+    // Verify ID token
     const ticket = await googleClient.verifyIdToken({
-      idToken: id_token,
+      idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
-    payload = ticket.getPayload();
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid Google token' });
-  }
+    const payload = ticket.getPayload();
 
-  const oauth_provider = 'google';
-  const oauth_sub = payload.sub;
+    // Derive zkLogin Sui wallet
+    const user_salt = generateSalt();
+    const sui_address = jwtToAddress(tokens.id_token, user_salt);
 
-  // 2. Find or create user
-  let { data: user } = await supabase
-    .from('users')
-    .select('*')
-    .eq('oauth_provider', oauth_provider)
-    .eq('oauth_sub', oauth_sub)
-    .single();
+    // Store session in Supabase (replace with your schema)
+    await supabase.from('sessions').upsert({
+      state,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture,
+      sui_wallet: sui_address,
+      created_at: new Date().toISOString(),
+    });
 
-  let user_salt;
-  let user_id;
-
-  if (!user) {
-    user_salt = generateSalt();
-    const { data: newUser, error } = await supabase
-      .from('users')
-      .insert({
-        oauth_provider,
-        oauth_sub,
-        user_salt,
-      })
-      .select()
-      .single();
-
-    if (error) return res.status(500).json({ error: error.message });
-    user = newUser;
-  }
-
-  user_salt = user.user_salt;
-  user_id = user.id;
-
-  // 3. Derive Sui address from JWT + salt
-  let sui_address;
-  try {
-    sui_address = jwtToAddress(id_token, user_salt);
+    // Show simple success page
+    res.send("✅ Login successful. You can close this tab and return to the game.");
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'Failed to derive Sui address' });
+    res.status(500).send("❌ Authentication failed");
+  }
+});
+
+// STEP 3: Unity polls here for profile
+app.get('/getProfile', async (req, res) => {
+  const { state } = req.query;
+  if (!state) return res.status(400).json({ error: 'Missing state' });
+
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('state', state)
+    .single();
+
+  if (error || !data) {
+    return res.status(404).json({ error: 'Not found yet' });
   }
 
-  // 4. Update DB if new
-  await supabase
-    .from('users')
-    .update({ sui_address, last_login: new Date().toISOString() })
-    .eq('id', user_id);
-
-  // 5. Create session token
-  const sessionToken = jwt.sign(
-    { user_id, sui_address },
-    process.env.JWT_SECRET,
-    { expiresIn: '1h' }
-  );
-
-  res.json({ user_id, sui_address, session_token: sessionToken });
+  res.json({
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    picture: data.picture,
+    suiWallet: data.sui_wallet,
+  });
 });
+
+// (OPTIONAL) keep your old /auth/google-login POST route if you want
+// for direct id_token submissions
 
 app.listen(process.env.PORT, () => {
   console.log(`ZKLogin backend running on port ${process.env.PORT}`);
