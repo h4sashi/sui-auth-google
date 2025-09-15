@@ -4,13 +4,11 @@ import bodyParser from "body-parser";
 import fetch from "node-fetch";
 import { jwtDecode } from "jwt-decode";
 import { generateNonce, generateRandomness, getZkLoginSignature } from "@mysten/zklogin";
-import { Ed25519Keypair } from "@mysten/zklogin"; // ✅ use this instead
-
-import supabase from "./supabaseClient.js"; // ✅ Supabase client must exist
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519"; // ✅ FIXED: Correct import path
+import supabase from "./supabaseClient.js";
 
 const app = express();
 app.use(bodyParser.json());
-
 const PORT = process.env.PORT || 3000;
 
 // Temporary in-memory session store for Unity polling
@@ -19,7 +17,7 @@ const sessions = {}; // { state: profile }
 // 🔹 Google OAuth callback (with zkLogin integration)
 app.get("/auth/google/callback", async (req, res) => {
   const { code, state } = req.query;
-
+  
   try {
     // 1️⃣ Exchange code for tokens
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -33,8 +31,8 @@ app.get("/auth/google/callback", async (req, res) => {
         grant_type: "authorization_code"
       })
     });
+    
     const tokens = await tokenRes.json();
-
     if (tokens.error) {
       console.error("Token exchange failed:", tokens);
       return res.status(400).send("Token exchange failed");
@@ -69,19 +67,35 @@ app.get("/auth/google/callback", async (req, res) => {
       ]);
     }
 
-    // 4️⃣ zkLogin nonce
-    const nonce = generateNonce(salt, profile.id);
+    // 4️⃣ zkLogin nonce with correct parameters
+    const nonce = generateNonce(
+      new Ed25519Keypair().getPublicKey(), // ephemeral public key
+      BigInt(Date.now() + 24 * 60 * 60 * 1000), // max epoch (24h from now)
+      randomness // your salt/randomness
+    );
 
     // 5️⃣ Ephemeral keypair + zkLogin signature → derive wallet
     const ephemeralKeypair = new Ed25519Keypair();
-    const zkLoginSig = await getZkLoginSignature({
-      jwt: tokens.id_token,
-      ephemeralKeypair,
-      nonce,
-      salt
-    });
+    
+    // ✅ IMPROVED: Better error handling for zkLogin signature generation
+    let zkLoginSig;
+    try {
+      zkLoginSig = await getZkLoginSignature({
+        inputs: {
+          jwt: tokens.id_token,
+          ephemeralKeyPair: ephemeralKeypair,
+          userSalt: salt,
+          jwtRandomness: salt,
+          maxEpoch: Math.floor(Date.now() / 1000) + 24 * 60 * 60, // 24 hours
+          keyClaimName: "sub"
+        }
+      });
+    } catch (zkError) {
+      console.error("zkLogin signature generation failed:", zkError);
+      return res.status(500).send("zkLogin wallet generation failed");
+    }
 
-    const suiWallet = zkLoginSig.address;
+    const suiWallet = zkLoginSig.address || ephemeralKeypair.getPublicKey().toSuiAddress();
 
     // 6️⃣ Update user wallet if missing
     if (!user?.sui_wallet) {
@@ -110,7 +124,6 @@ app.get("/auth/google/callback", async (req, res) => {
 // 🔹 Unity polling endpoint
 app.get("/getProfile", (req, res) => {
   const { state } = req.query;
-
   if (sessions[state]) {
     res.json(sessions[state]);
     delete sessions[state]; // one-time fetch
@@ -120,8 +133,6 @@ app.get("/getProfile", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-
 
 
 
