@@ -99,13 +99,17 @@ app.get('/getProfile', async (req, res) => {
     return res.status(404).json({ error: 'Not found yet' });
   }
 
-  res.json({
-    id: data.id,
-    email: data.email,
-    name: data.name,
-    picture: data.picture,
-    suiWallet: data.sui_wallet,
-  });
+  console.log("Data object:", data);
+
+
+ res.json({
+  id: data.id,
+  email: data.email,
+  name: data.name,
+  picture: data.picture,
+  suiWallet: data.suiWallet, // <-- match casing
+});
+
 });
 
 // (OPTIONAL) keep your old /auth/google-login POST route if you want
