@@ -4,7 +4,8 @@ import bodyParser from "body-parser";
 import fetch from "node-fetch";
 import { jwtDecode } from "jwt-decode";
 import { generateNonce, generateRandomness, getZkLoginSignature } from "@mysten/zklogin";
-import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";  // ✅ official export
+import { Ed25519Keypair } from "@mysten/zklogin"; // ✅ use this instead
+
 import supabase from "./supabaseClient.js"; // ✅ Supabase client must exist
 
 const app = express();
