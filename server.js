@@ -4,9 +4,8 @@ import bodyParser from "body-parser";
 import fetch from "node-fetch";
 import { jwtDecode } from "jwt-decode";
 import { generateNonce, generateRandomness, getZkLoginSignature } from "@mysten/zklogin";
-import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";
-
-import supabase from "./supabaseClient.js"; // ✅ make sure supabaseClient.js exists
+import { Ed25519Keypair } from "@mysten/sui.js/keypairs/ed25519";  // ✅ official export
+import supabase from "./supabaseClient.js"; // ✅ Supabase client must exist
 
 const app = express();
 app.use(bodyParser.json());
@@ -120,7 +119,6 @@ app.get("/getProfile", (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
 
 
 
