@@ -3,8 +3,8 @@ import express from "express";
 import bodyParser from "body-parser";
 import fetch from "node-fetch";
 import { jwtDecode } from "jwt-decode";
-import { generateNonce, generateRandomness, getZkLoginSignature } from "@mysten/zklogin";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519"; // ✅ FIXED: Correct import path
+import { generateNonce, generateRandomness, jwtToAddress } from "@mysten/sui/zklogin";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import supabase from "./supabaseClient.js";
 
 const app = express();
@@ -60,67 +60,63 @@ app.get("/auth/google/callback", async (req, res) => {
     } else {
       salt = generateRandomness();
       console.log("✅ Generated new salt for user:", profile.email);
-      await supabase.from("users").insert([
+      
+      // Insert new user
+      const { error: insertError } = await supabase.from("users").insert([
         {
           id: profile.id,
           email: profile.email,
           name: profile.name,
           picture: profile.picture,
-          salt
+          salt: salt.toString() // Convert BigInt to string for storage
         }
       ]);
+      
+      if (insertError) {
+        console.error("Database insert error:", insertError);
+        return res.status(500).send("Database error");
+      }
     }
 
-    // 4️⃣ Create ephemeral keypair first
-    const ephemeralKeypair = new Ed25519Keypair();
+    // 4️⃣ Decode JWT and derive zkLogin address
+    const decodedJwt = jwtDecode(tokens.id_token);
+    console.log("✅ Decoded JWT sub:", decodedJwt.sub);
     
-    // Generate nonce with correct parameters
-    const maxEpoch = Math.floor(Date.now() / 1000) + 24 * 60 * 60; // 24 hours from now
-    const nonce = generateNonce(ephemeralKeypair.getPublicKey(), maxEpoch, salt);
-
-    // 5️⃣ Generate zkLogin signature (ephemeralKeypair already created above)
+    // Convert salt to BigInt if it's stored as string
+    const saltBigInt = typeof salt === 'string' ? BigInt(salt) : salt;
     
-    // ✅ IMPROVED: Better error handling for zkLogin signature generation
-    let zkLoginSig;
-    try {
-      zkLoginSig = await getZkLoginSignature({
-        inputs: {
-          jwt: tokens.id_token,
-          ephemeralKeyPair: ephemeralKeypair,
-          userSalt: salt,
-          jwtRandomness: salt,
-          maxEpoch: maxEpoch,
-          keyClaimName: "sub"
-        }
-      });
-    } catch (zkError) {
-      console.error("zkLogin signature generation failed:", zkError);
-      return res.status(500).send("zkLogin wallet generation failed");
-    }
+    // Derive the zkLogin Sui address directly from JWT and salt
+    const suiWallet = jwtToAddress(tokens.id_token, saltBigInt);
+    console.log("✅ Generated zkLogin wallet address:", suiWallet);
 
-    const suiWallet = zkLoginSig.address || ephemeralKeypair.getPublicKey().toSuiAddress();
-
-    // 6️⃣ Update user wallet if missing
+    // 5️⃣ Update user wallet if missing
     if (!user?.sui_wallet) {
-      await supabase
+      const { error: updateError } = await supabase
         .from("users")
         .update({ sui_wallet: suiWallet })
         .eq("email", profile.email);
+        
+      if (updateError) {
+        console.error("Database update error:", updateError);
+      }
     }
 
-    // 7️⃣ Store session for Unity polling
+    // 6️⃣ Store session for Unity polling
     sessions[state] = {
       id: profile.id,
       email: profile.email,
       name: profile.name,
       picture: profile.picture,
-      suiWallet
+      suiWallet,
+      // Store additional data that might be useful for Unity
+      sub: decodedJwt.sub,
+      aud: decodedJwt.aud
     };
 
     res.send("✅ Login successful! You can return to your game.");
   } catch (err) {
     console.error("Google callback error:", err);
-    res.status(500).send("Auth failed.");
+    res.status(500).send("Auth failed: " + err.message);
   }
 });
 
@@ -135,9 +131,12 @@ app.get("/getProfile", (req, res) => {
   }
 });
 
+// 🔹 Health check endpoint
+app.get("/ping", (req, res) => {
+  res.send("pong");
+});
+
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-
 
 
 
