@@ -1,10 +1,9 @@
-// server.js
+// server.js - Final version with user_profiles table
 import express from "express";
 import bodyParser from "body-parser";
 import fetch from "node-fetch";
 import { jwtDecode } from "jwt-decode";
-import { generateNonce, generateRandomness, jwtToAddress } from "@mysten/sui/zklogin";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { generateRandomness, jwtToAddress } from "@mysten/sui/zklogin";
 import supabase from "./supabaseClient.js";
 
 const app = express();
@@ -46,59 +45,76 @@ app.get("/auth/google/callback", async (req, res) => {
     
     console.log("✅ Google profile:", { id: profile.id, email: profile.email, name: profile.name });
 
-    // 3️⃣ Check if user exists in DB
-    let { data: user, error } = await supabase
-      .from("users")
-      .select("id, email, name, picture, sui_wallet, salt")
+    // 3️⃣ Check if user exists in user_profiles table
+    let { data: userProfile, error } = await supabase
+      .from("user_profiles")
+      .select("*")
       .eq("email", profile.email)
       .single();
 
     let salt;
-    if (user && user.salt) {
-      salt = user.salt;
+    
+    if (userProfile && userProfile.user_salt) {
+      // User exists with salt
+      salt = userProfile.user_salt;
       console.log("✅ Using existing salt for user:", profile.email);
     } else {
-      salt = generateRandomness();
+      // New user or user without salt
+      salt = generateRandomness().toString();
       console.log("✅ Generated new salt for user:", profile.email);
-      
-      // Insert new user
-      const { error: insertError } = await supabase.from("users").insert([
-        {
-          id: profile.id,
-          email: profile.email,
-          name: profile.name,
-          picture: profile.picture,
-          salt: salt.toString() // Convert BigInt to string for storage
-        }
-      ]);
-      
-      if (insertError) {
-        console.error("Database insert error:", insertError);
-        return res.status(500).send("Database error");
-      }
     }
 
     // 4️⃣ Decode JWT and derive zkLogin address
     const decodedJwt = jwtDecode(tokens.id_token);
     console.log("✅ Decoded JWT sub:", decodedJwt.sub);
     
-    // Convert salt to BigInt if it's stored as string
-    const saltBigInt = typeof salt === 'string' ? BigInt(salt) : salt;
+    // Convert salt to BigInt
+    const saltBigInt = BigInt(salt);
     
     // Derive the zkLogin Sui address directly from JWT and salt
     const suiWallet = jwtToAddress(tokens.id_token, saltBigInt);
     console.log("✅ Generated zkLogin wallet address:", suiWallet);
 
-    // 5️⃣ Update user wallet if missing
-    if (!user?.sui_wallet) {
-      const { error: updateError } = await supabase
-        .from("users")
-        .update({ sui_wallet: suiWallet })
-        .eq("email", profile.email);
+    // 5️⃣ Upsert user profile
+    const profileData = {
+      email: profile.email,
+      google_id: profile.id,
+      name: profile.name,
+      picture: profile.picture,
+      user_salt: salt,
+      sui_address: suiWallet,
+      updated_at: new Date().toISOString()
+    };
+
+    let finalUserProfile;
+    
+    if (userProfile) {
+      // Update existing user
+      const { data: updated, error: updateError } = await supabase
+        .from("user_profiles")
+        .update(profileData)
+        .eq("id", userProfile.id)
+        .select()
+        .single();
         
       if (updateError) {
-        console.error("Database update error:", updateError);
+        console.error("Profile update error:", updateError);
+        return res.status(500).send("Profile update failed");
       }
+      finalUserProfile = updated;
+    } else {
+      // Insert new user
+      const { data: inserted, error: insertError } = await supabase
+        .from("user_profiles")
+        .insert([profileData])
+        .select()
+        .single();
+        
+      if (insertError) {
+        console.error("Profile insert error:", insertError);
+        return res.status(500).send("Profile creation failed");
+      }
+      finalUserProfile = inserted;
     }
 
     // 6️⃣ Store session for Unity polling
@@ -108,6 +124,7 @@ app.get("/auth/google/callback", async (req, res) => {
       name: profile.name,
       picture: profile.picture,
       suiWallet,
+      profileId: finalUserProfile.id,
       // Store additional data that might be useful for Unity
       sub: decodedJwt.sub,
       aud: decodedJwt.aud
@@ -136,8 +153,34 @@ app.get("/ping", (req, res) => {
   res.send("pong");
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// 🔹 Get user profile by email (for Unity)
+app.get("/profile/:email", async (req, res) => {
+  const { email } = req.params;
+  
+  try {
+    const { data: profile, error } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("email", email)
+      .single();
+      
+    if (error || !profile) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    
+    res.json({
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+      suiWallet: profile.sui_address
+    });
+  } catch (err) {
+    console.error("Profile fetch error:", err);
+    res.status(500).send("Profile fetch failed");
+  }
+});
 
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 
 
