@@ -18,7 +18,7 @@ const app = express();
 // Network Configuration
 const NETWORK_CONFIG = {
   // Choose your network here:
-  current: process.env.SUI_NETWORK || 'testnet', // 'devnet', 'testnet', or 'mainnet'
+  current: process.env.SUI_NETWORK || 'mainnet', // 'devnet', 'testnet', or 'mainnet'
   
   // Network URLs (automatically handled by getFullnodeUrl)
   devnet: 'https://fullnode.devnet.sui.io',
