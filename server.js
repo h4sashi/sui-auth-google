@@ -63,7 +63,7 @@ function needsUsernameSetup(profile) {
 }
 
 
-// Replace the entire wallet-connect route in your server.js with this corrected version
+// Replace the wallet-connect route with this simplified, working version
 app.get("/wallet-connect", (req, res) => {
   const { state } = req.query;
   
@@ -71,7 +71,6 @@ app.get("/wallet-connect", (req, res) => {
     return res.status(400).send("Missing state parameter");
   }
 
-  // Serve wallet connection HTML page with proper wallet detection
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -80,7 +79,7 @@ app.get("/wallet-connect", (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
             body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                font-family: Arial, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 margin: 0;
                 padding: 20px;
@@ -90,375 +89,267 @@ app.get("/wallet-connect", (req, res) => {
                 align-items: center;
             }
             .container {
-                background: rgba(255,255,255,0.95);
-                padding: 40px;
-                border-radius: 20px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
                 max-width: 500px;
                 width: 100%;
-                text-align: center;
             }
-            .title {
-                color: #333;
-                font-size: 28px;
-                margin-bottom: 10px;
-                font-weight: 600;
-            }
-            .subtitle {
-                color: #666;
-                font-size: 16px;
-                margin-bottom: 30px;
-            }
-            .wallet-button {
-                display: block;
-                width: 100%;
-                padding: 16px 24px;
-                margin: 12px 0;
-                background: #4F46E5;
-                color: white;
+            .title { color: #333; font-size: 24px; margin-bottom: 20px; text-align: center; }
+            .status { padding: 15px; border-radius: 8px; margin: 15px 0; text-align: center; font-weight: bold; }
+            .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+            .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+            .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+            .section { margin: 25px 0; padding: 20px; border: 2px solid #e9ecef; border-radius: 10px; }
+            .wallet-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+            .wallet-detected { border-color: #28a745; background: #f8fff9; }
+            .button {
+                padding: 12px 20px;
                 border: none;
-                border-radius: 12px;
-                font-size: 16px;
-                font-weight: 500;
+                border-radius: 6px;
+                font-size: 14px;
                 cursor: pointer;
-                transition: all 0.3s ease;
-                text-decoration: none;
+                transition: all 0.3s;
             }
-            .wallet-button:hover:not(:disabled) {
-                background: #4338CA;
-                transform: translateY(-2px);
-                box-shadow: 0 10px 20px rgba(79, 70, 229, 0.3);
-            }
-            .wallet-button:disabled {
-                background: #9CA3AF;
-                cursor: not-allowed;
-                transform: none;
-                box-shadow: none;
-            }
-            .status {
-                margin: 20px 0;
-                padding: 12px;
-                border-radius: 8px;
-                font-weight: 500;
-            }
-            .status.success {
-                background: #D1FAE5;
-                color: #065F46;
-                border: 1px solid #A7F3D0;
-            }
-            .status.error {
-                background: #FEE2E2;
-                color: #991B1B;
-                border: 1px solid #FECACA;
-            }
-            .status.info {
-                background: #EFF6FF;
-                color: #1E40AF;
-                border: 1px solid #DBEAFE;
-            }
-            .wallet-list {
-                text-align: left;
-                margin: 20px 0;
-            }
-            .wallet-item {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 12px;
-                margin: 8px 0;
-                border: 2px solid #E5E7EB;
-                border-radius: 8px;
-                transition: border-color 0.3s;
-            }
-            .wallet-item.detected {
-                border-color: #10B981;
-                background: #F0FDF4;
-            }
-            .wallet-name {
-                font-weight: 500;
-            }
-            .wallet-status {
-                font-size: 14px;
-                color: #6B7280;
-            }
-            .detected {
-                color: #10B981 !important;
-            }
-            .not-detected {
-                color: #EF4444 !important;
-            }
-            .install-link {
-                color: #4F46E5;
-                text-decoration: none;
-                font-size: 12px;
-                margin-left: 8px;
-            }
-            .manual-option {
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 1px solid #E5E7EB;
-            }
-            .manual-option h3 {
-                color: #374151;
-                margin-bottom: 15px;
-            }
-            .address-input {
-                width: 100%;
-                padding: 12px;
-                border: 2px solid #E5E7EB;
-                border-radius: 8px;
-                font-size: 14px;
-                margin-bottom: 10px;
-                box-sizing: border-box;
-            }
-            .address-input:focus {
-                outline: none;
-                border-color: #4F46E5;
-            }
-            .loading {
-                display: none;
-                margin: 20px 0;
-            }
-            .spinner {
-                border: 3px solid #f3f3f3;
-                border-top: 3px solid #4F46E5;
-                border-radius: 50%;
-                width: 20px;
-                height: 20px;
-                animation: spin 1s linear infinite;
-                margin: 0 auto;
-            }
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
+            .button-primary { background: #007bff; color: white; }
+            .button-primary:hover:not(:disabled) { background: #0056b3; }
+            .button-success { background: #28a745; color: white; }
+            .button-success:hover:not(:disabled) { background: #1e7e34; }
+            .button:disabled { background: #6c757d; cursor: not-allowed; opacity: 0.6; }
+            .input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; margin: 10px 0; box-sizing: border-box; }
+            .input:focus { border-color: #007bff; outline: none; }
+            .loading { display: none; text-align: center; margin: 20px 0; }
+            .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         </style>
     </head>
     <body>
         <div class="container">
             <div class="title">Connect Your Sui Wallet</div>
-            <div class="subtitle">Choose how you'd like to connect to the game</div>
             
-            <div id="status" class="status info">
-                Checking for installed Sui wallets...
+            <div id="status" class="status info">Checking for wallet extensions...</div>
+            
+            <!-- Browser Wallet Section -->
+            <div class="section">
+                <h3>Browser Wallet Extensions</h3>
+                <div id="wallet-list">
+                    <div class="wallet-item" id="sui-wallet-item">
+                        <div>
+                            <strong>Sui Wallet</strong>
+                            <div id="sui-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="sui-connect" onclick="connectBrowserWallet('sui')" disabled>Connect</button>
+                    </div>
+                    
+                    <div class="wallet-item" id="suiet-item">
+                        <div>
+                            <strong>Suiet</strong>
+                            <div id="suiet-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="suiet-connect" onclick="connectBrowserWallet('suiet')" disabled>Connect</button>
+                    </div>
+                    
+                    <div class="wallet-item" id="ethos-item">
+                        <div>
+                            <strong>Ethos</strong>
+                            <div id="ethos-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="ethos-connect" onclick="connectBrowserWallet('ethos')" disabled>Connect</button>
+                    </div>
+                    
+                    <div class="wallet-item" id="slush-item">
+                        <div>
+                            <strong>Slush</strong>
+                            <div id="slush-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="slush-connect" onclick="connectBrowserWallet('slush')" disabled>Connect</button>
+                    </div>
+                </div>
             </div>
             
-            <div class="wallet-list" id="walletList">
-                <div class="wallet-item" id="sui-wallet">
-                    <div>
-                        <div class="wallet-name">Sui Wallet</div>
-                        <div class="wallet-status" id="sui-wallet-status">Checking...</div>
-                    </div>
-                    <button class="wallet-button" onclick="connectWallet('sui-wallet')" disabled>Connect</button>
-                </div>
-                
-                <div class="wallet-item" id="suiet">
-                    <div>
-                        <div class="wallet-name">Suiet Wallet</div>
-                        <div class="wallet-status" id="suiet-status">Checking...</div>
-                    </div>
-                    <button class="wallet-button" onclick="connectWallet('suiet')" disabled>Connect</button>
-                </div>
-                
-                <div class="wallet-item" id="ethos">
-                    <div>
-                        <div class="wallet-name">Ethos Wallet</div>
-                        <div class="wallet-status" id="ethos-status">Checking...</div>
-                    </div>
-                    <button class="wallet-button" onclick="connectWallet('ethos')" disabled>Connect</button>
-                </div>
-                
-                <div class="wallet-item" id="slush">
-                    <div>
-                        <div class="wallet-name">Slush Wallet</div>
-                        <div class="wallet-status" id="slush-status">Checking...</div>
-                    </div>
-                    <button class="wallet-button" onclick="connectWallet('slush')" disabled>Connect</button>
-                </div>
-            </div>
-            
-            <div class="manual-option">
-                <h3>Or Connect Manually</h3>
+            <!-- Manual Connection Section -->
+            <div class="section">
+                <h3>Manual Connection</h3>
+                <p>Enter your Sui wallet address directly:</p>
                 <input type="text" 
-                       class="address-input" 
-                       id="manualAddress" 
-                       placeholder="Enter your Sui wallet address (0x...)"
-                       onchange="validateManualAddress()">
-                <button class="wallet-button" 
+                       class="input" 
+                       id="manual-address" 
+                       placeholder="0x1234567890abcdef..."
+                       oninput="validateManualInput()">
+                <button class="button button-success" 
+                        id="manual-connect" 
                         onclick="connectManualWallet()" 
-                        id="manualConnectBtn" 
-                        disabled>
-                    Connect Manual Wallet
-                </button>
+                        disabled>Connect Manual Wallet</button>
             </div>
             
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <p>Connecting wallet...</p>
+                <p>Processing connection...</p>
             </div>
         </div>
 
         <script>
-            const state = '${state}';
-            let detectedWallets = {};
+            const STATE = '${state}';
+            let walletCheckComplete = false;
             
-            // Comprehensive wallet detection with proper checks
+            // Simplified wallet detection
             function checkWallets() {
-                console.log('Checking for wallet extensions...');
+                console.log('Starting wallet detection...');
                 
-                // Wait for DOM to fully load and extensions to initialize
-                const walletChecks = {
-                    'sui-wallet': function() {
-                        return window.suiWallet || 
-                               (window.sui && window.sui.wallet) ||
-                               window.wallet ||
-                               (window.chrome && window.chrome.sui);
+                const wallets = {
+                    'sui': {
+                        check: function() { 
+                            return window.suiWallet || window.sui; 
+                        },
+                        statusEl: 'sui-status',
+                        connectEl: 'sui-connect',
+                        itemEl: 'sui-wallet-item'
                     },
-                    'suiet': function() {
-                        return window.suiet || window.suietWallet;
+                    'suiet': {
+                        check: function() { 
+                            return window.suiet; 
+                        },
+                        statusEl: 'suiet-status',
+                        connectEl: 'suiet-connect',
+                        itemEl: 'suiet-item'
                     },
-                    'ethos': function() {
-                        return window.ethos || window.ethosWallet;
+                    'ethos': {
+                        check: function() { 
+                            return window.ethos; 
+                        },
+                        statusEl: 'ethos-status',
+                        connectEl: 'ethos-connect',
+                        itemEl: 'ethos-item'
                     },
-                    'slush': function() {
-                        return window.slush || 
-                               window.slushWallet || 
-                               (window.sui && window.sui.slush);
+                    'slush': {
+                        check: function() { 
+                            return window.slush || window.slushWallet; 
+                        },
+                        statusEl: 'slush-status',
+                        connectEl: 'slush-connect',
+                        itemEl: 'slush-item'
                     }
                 };
                 
-                let foundCount = 0;
+                let detectedCount = 0;
                 
-                for (const walletId in walletChecks) {
-                    const statusEl = document.getElementById(walletId + '-status');
-                    const buttonEl = document.querySelector('#' + walletId + ' button');
-                    const itemEl = document.getElementById(walletId);
+                for (const walletId in wallets) {
+                    const wallet = wallets[walletId];
+                    const statusEl = document.getElementById(wallet.statusEl);
+                    const connectEl = document.getElementById(wallet.connectEl);
+                    const itemEl = document.getElementById(wallet.itemEl);
                     
                     try {
-                        const wallet = walletChecks[walletId]();
-                        console.log('Checking ' + walletId + ':', wallet ? 'Found' : 'Not found');
+                        const detected = wallet.check();
+                        console.log('Wallet ' + walletId + ':', detected ? 'DETECTED' : 'not found');
                         
-                        if (wallet && typeof wallet === 'object') {
-                            statusEl.innerHTML = '<span class="detected">✓ Detected</span>';
-                            statusEl.className = 'wallet-status detected';
-                            buttonEl.disabled = false;
-                            itemEl.classList.add('detected');
-                            detectedWallets[walletId] = wallet;
-                            foundCount++;
-                            console.log(walletId + ' detected and ready');
+                        if (detected) {
+                            statusEl.textContent = 'Detected';
+                            statusEl.style.color = '#28a745';
+                            connectEl.disabled = false;
+                            itemEl.classList.add('wallet-detected');
+                            detectedCount++;
                         } else {
-                            statusEl.innerHTML = '<span class="not-detected">Not installed</span> <a href="#" class="install-link" onclick="installWallet(\'' + walletId + '\')">Install</a>';
-                            buttonEl.disabled = true;
-                            itemEl.classList.remove('detected');
+                            statusEl.textContent = 'Not installed';
+                            statusEl.style.color = '#6c757d';
+                            connectEl.disabled = true;
                         }
                     } catch (error) {
                         console.error('Error checking ' + walletId + ':', error);
-                        statusEl.innerHTML = '<span class="not-detected">Error checking</span>';
-                        buttonEl.disabled = true;
+                        statusEl.textContent = 'Check failed';
+                        statusEl.style.color = '#dc3545';
+                        connectEl.disabled = true;
                     }
                 }
                 
-                const statusEl = document.getElementById('status');
-                if (foundCount > 0) {
-                    statusEl.textContent = foundCount + ' wallet(s) detected. Click Connect to proceed.';
-                    statusEl.className = 'status success';
-                } else {
-                    statusEl.textContent = 'No Sui wallets detected. Install a wallet extension or connect manually below.';
-                    statusEl.className = 'status error';
-                }
+                walletCheckComplete = true;
+                updateStatus(detectedCount > 0 ? 
+                    detectedCount + ' wallet(s) detected. Choose one to connect.' : 
+                    'No browser wallets detected. Use manual connection below.', 
+                    detectedCount > 0 ? 'success' : 'info');
                 
-                console.log('Total wallets detected: ' + foundCount);
+                console.log('Wallet detection complete. Found:', detectedCount);
             }
             
-            // Connect to a specific wallet with better error handling
-            async function connectWallet(walletName) {
-                const wallet = detectedWallets[walletName];
-                if (!wallet) {
-                    updateStatus('Wallet not found: ' + walletName, 'error');
-                    return;
-                }
-                
+            // Connect browser wallet
+            async function connectBrowserWallet(walletType) {
+                console.log('Attempting to connect browser wallet:', walletType);
                 showLoading(true);
-                updateStatus('Requesting wallet connection...', 'info');
                 
                 try {
-                    console.log('Attempting to connect to ' + walletName + '...');
+                    let wallet;
+                    switch(walletType) {
+                        case 'sui':
+                            wallet = window.suiWallet || window.sui;
+                            break;
+                        case 'suiet':
+                            wallet = window.suiet;
+                            break;
+                        case 'ethos':
+                            wallet = window.ethos;
+                            break;
+                        case 'slush':
+                            wallet = window.slush || window.slushWallet;
+                            break;
+                    }
                     
-                    let connection;
+                    if (!wallet) {
+                        throw new Error('Wallet not found');
+                    }
                     
-                    // Different wallets have different connection methods
+                    updateStatus('Requesting wallet permission...', 'info');
+                    
+                    // Try to connect
+                    let accounts;
                     if (wallet.connect) {
-                        connection = await wallet.connect();
+                        const result = await wallet.connect();
+                        accounts = result.accounts || result;
                     } else if (wallet.requestPermissions) {
-                        connection = await wallet.requestPermissions();
+                        const result = await wallet.requestPermissions();
+                        accounts = result.accounts || result;
                     } else {
                         throw new Error('Wallet does not support connection');
                     }
                     
-                    console.log('Wallet connection result:', connection);
-                    
-                    if (connection && connection.accounts && connection.accounts.length > 0) {
-                        const address = connection.accounts[0].address;
-                        console.log('Got wallet address:', address);
-                        
-                        // Optional: Request signature for verification
-                        let signature = '';
-                        let message = 'Connect to Game - ' + new Date().toISOString();
-                        
-                        try {
-                            if (wallet.signMessage || wallet.signPersonalMessage) {
-                                const signMethod = wallet.signMessage || wallet.signPersonalMessage;
-                                const signResult = await signMethod({
-                                    message: new TextEncoder().encode(message),
-                                    account: connection.accounts[0]
-                                });
-                                signature = signResult.signature || '';
-                                console.log('Signature obtained');
-                            }
-                        } catch (sigError) {
-                            console.warn('Signature failed, continuing without:', sigError);
-                        }
-                        
-                        // Send to server
-                        await submitWalletConnection({
-                            walletAddress: address,
-                            signature: signature,
-                            message: message,
-                            walletName: walletName,
-                            state: state
-                        });
-                        
-                    } else {
-                        throw new Error('No accounts found in wallet connection');
+                    if (!accounts || !accounts.length) {
+                        throw new Error('No accounts found');
                     }
                     
+                    const address = accounts[0].address;
+                    console.log('Got wallet address:', address);
+                    
+                    await submitWalletConnection({
+                        walletAddress: address,
+                        walletName: walletType,
+                        signature: '',
+                        message: '',
+                        state: STATE
+                    });
+                    
                 } catch (error) {
-                    console.error('Wallet connection failed:', error);
+                    console.error('Browser wallet connection failed:', error);
                     updateStatus('Connection failed: ' + error.message, 'error');
                     showLoading(false);
                 }
             }
             
-            // Manual wallet connection with validation
-            function validateManualAddress() {
-                const address = document.getElementById('manualAddress').value.trim();
-                const button = document.getElementById('manualConnectBtn');
+            // Validate manual input
+            function validateManualInput() {
+                const address = document.getElementById('manual-address').value.trim();
+                const button = document.getElementById('manual-connect');
                 
-                if (address.length >= 64 && address.startsWith('0x')) {
+                if (address.length >= 60 && address.startsWith('0x')) {
                     button.disabled = false;
-                    button.textContent = 'Connect Manual Wallet';
-                } else if (address.length > 0) {
-                    button.disabled = true;
-                    button.textContent = 'Invalid Address Format';
                 } else {
                     button.disabled = true;
-                    button.textContent = 'Connect Manual Wallet';
                 }
             }
             
+            // Connect manual wallet
             async function connectManualWallet() {
-                const address = document.getElementById('manualAddress').value.trim();
-                if (!address) return;
+                const address = document.getElementById('manual-address').value.trim();
+                console.log('Attempting manual wallet connection:', address);
                 
                 showLoading(true);
                 updateStatus('Connecting manual wallet...', 'info');
@@ -466,54 +357,50 @@ app.get("/wallet-connect", (req, res) => {
                 try {
                     await submitWalletConnection({
                         walletAddress: address,
+                        walletName: 'manual',
                         signature: '',
                         message: '',
-                        walletName: 'manual',
-                        state: state
+                        state: STATE
                     });
                 } catch (error) {
+                    console.error('Manual wallet connection failed:', error);
                     updateStatus('Manual connection failed: ' + error.message, 'error');
                     showLoading(false);
                 }
             }
             
-            // Submit wallet connection to server with better error handling
+            // Submit connection to server
             async function submitWalletConnection(data) {
+                console.log('Submitting wallet connection:', data);
+                
                 try {
-                    console.log('Submitting wallet connection:', data);
-                    
                     const response = await fetch('/auth/browser-wallet', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });
                     
                     const responseText = await response.text();
+                    console.log('Server response status:', response.status);
                     console.log('Server response:', responseText);
                     
-                    let result;
-                    try {
-                        result = JSON.parse(responseText);
-                    } catch (parseError) {
-                        throw new Error('Server returned invalid JSON: ' + responseText);
+                    if (!response.ok) {
+                        throw new Error('Server error: ' + response.status + ' - ' + responseText);
                     }
                     
+                    const result = JSON.parse(responseText);
+                    
                     if (result.success) {
-                        updateStatus('Wallet connected successfully! You can now close this window.', 'success');
-                        
-                        // Auto-close after 3 seconds
-                        setTimeout(function() {
-                            window.close();
-                        }, 3000);
-                        
+                        updateStatus('SUCCESS! Wallet connected. You can close this window.', 'success');
+                        setTimeout(function() { 
+                            try { window.close(); } catch(e) { console.log('Cannot auto-close window'); }
+                        }, 2000);
                     } else {
-                        throw new Error(result.error || 'Connection failed');
+                        throw new Error(result.error || 'Unknown error');
                     }
                     
                 } catch (error) {
-                    console.error('Submit wallet connection error:', error);
+                    console.error('Submit connection error:', error);
                     throw error;
                 }
             }
@@ -523,68 +410,50 @@ app.get("/wallet-connect", (req, res) => {
                 const statusEl = document.getElementById('status');
                 statusEl.textContent = message;
                 statusEl.className = 'status ' + type;
-                console.log('Status update:', message, type);
+                console.log('Status:', type, '-', message);
             }
             
             function showLoading(show) {
                 const loading = document.getElementById('loading');
-                
                 if (show) {
                     loading.style.display = 'block';
-                    var buttons = document.querySelectorAll('button');
-                    for (var i = 0; i < buttons.length; i++) {
+                    // Disable all buttons
+                    const buttons = document.querySelectorAll('button');
+                    for (let i = 0; i < buttons.length; i++) {
                         buttons[i].disabled = true;
                     }
                 } else {
                     loading.style.display = 'none';
-                    checkWallets(); // Re-enable appropriate buttons
-                    validateManualAddress(); // Re-check manual input
-                }
-            }
-            
-            function installWallet(walletName) {
-                const urls = {
-                    'sui-wallet': 'https://chrome.google.com/webstore/detail/sui-wallet/opcgpfmipidbgpenhmajoajpbobppdil',
-                    'suiet': 'https://chrome.google.com/webstore/detail/suiet-sui-wallet/khpkpbbcccdmmclmpigdgddabeilkdpd',
-                    'ethos': 'https://chrome.google.com/webstore/detail/ethos-sui-wallet/mcbigmjiafegjnnogedioegffbooigli',
-                    'slush': 'https://chrome.google.com/webstore/search/slush%20wallet'
-                };
-                
-                if (urls[walletName]) {
-                    window.open(urls[walletName], '_blank');
-                }
-            }
-            
-            // Enhanced initialization with multiple retry attempts
-            function initializeWalletDetection() {
-                console.log('Initializing wallet detection...');
-                
-                // Initial check after a delay to allow extensions to load
-                setTimeout(function() {
-                    checkWallets();
-                }, 1000);
-                
-                // Retry detection periodically for newly installed extensions
-                let retryCount = 0;
-                const maxRetries = 15; // Increased retries
-                
-                const retryDetection = setInterval(function() {
-                    console.log('Wallet detection retry ' + (retryCount + 1) + '/' + maxRetries);
-                    checkWallets();
-                    retryCount++;
-                    
-                    if (retryCount >= maxRetries) {
-                        clearInterval(retryDetection);
-                        console.log('Wallet detection completed');
+                    // Re-run wallet check to re-enable appropriate buttons
+                    if (walletCheckComplete) {
+                        checkWallets();
+                        validateManualInput();
                     }
-                }, 2000);
+                }
             }
             
-            // Start detection when page loads
+            // Initialize
+            function init() {
+                console.log('Initializing wallet connection page with state:', STATE);
+                updateStatus('Checking for wallet extensions...', 'info');
+                
+                // Check immediately
+                setTimeout(checkWallets, 500);
+                
+                // Also check after a longer delay for slow-loading extensions
+                setTimeout(function() {
+                    if (!walletCheckComplete) {
+                        console.log('Running delayed wallet check...');
+                        checkWallets();
+                    }
+                }, 3000);
+            }
+            
+            // Start when page loads
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', initializeWalletDetection);
+                document.addEventListener('DOMContentLoaded', init);
             } else {
-                initializeWalletDetection();
+                init();
             }
         </script>
     </body>
