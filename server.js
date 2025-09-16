@@ -514,6 +514,8 @@ app.post("/setup-username", async (req, res) => {
   }
 });
 
+// Replace your existing Google OAuth callback handler with this fixed version
+
 // Google OAuth callback 
 app.get("/auth/google/callback", async (req, res) => {
   const { code, state } = req.query;
@@ -553,16 +555,51 @@ app.get("/auth/google/callback", async (req, res) => {
       name: userInfo.name 
     });
     
-    // Generate Sui address using zkLogin
-    const userSalt = generateRandomness();
-    const suiAddress = jwtToAddress(tokens.id_token, userSalt);
+    let profile;
+    let isNewUser = false;
     
-    console.log("🔐 Generated Sui address:", suiAddress);
-    
-    // Save/update user profile in database
-    const { data: profile, error } = await supabase
+    // Check if user already exists
+    const { data: existingProfile, error: fetchError } = await supabase
       .from("user_profiles")
-      .upsert([{
+      .select("*")
+      .eq("google_id", userInfo.sub)
+      .single();
+    
+    if (existingProfile) {
+      console.log("✅ Existing zkLogin user found - updating login time");
+      
+      // Update existing user's last login
+      const { data: updatedProfile, error: updateError } = await supabase
+        .from("user_profiles")
+        .update({ 
+          updated_at: new Date().toISOString(),
+          // Update name and picture in case they changed on Google
+          name: userInfo.name,
+          picture: userInfo.picture
+        })
+        .eq("id", existingProfile.id)
+        .select()
+        .single();
+        
+      if (updateError) {
+        console.error("❌ Profile update error:", updateError);
+        throw new Error("Profile update failed");
+      }
+      
+      profile = updatedProfile;
+      console.log(`🔐 Retrieved existing Sui address: ${profile.sui_address}`);
+      
+    } else {
+      console.log("🆕 New zkLogin user - creating profile");
+      
+      // Generate Sui address using zkLogin for new users
+      const userSalt = generateRandomness();
+      const suiAddress = jwtToAddress(tokens.id_token, userSalt);
+      
+      console.log("🔐 Generated new Sui address:", suiAddress);
+      
+      // Create new user profile
+      const profileData = {
         email: userInfo.email,
         google_id: userInfo.sub,
         name: userInfo.name,
@@ -570,14 +607,23 @@ app.get("/auth/google/callback", async (req, res) => {
         user_salt: userSalt,
         sui_address: suiAddress,
         auth_method: "zklogin",
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-    
-    if (error) {
-      console.error("❌ Database error:", error);
-      throw new Error("Database save failed");
+      };
+      
+      const { data: insertedProfile, error: insertError } = await supabase
+        .from("user_profiles")
+        .insert([profileData])
+        .select()
+        .single();
+        
+      if (insertError) {
+        console.error("❌ Profile insert error:", insertError);
+        throw new Error("Profile creation failed");
+      }
+      
+      profile = insertedProfile;
+      isNewUser = true;
     }
     
     const needsUsername = needsUsernameSetup(profile);
@@ -586,9 +632,9 @@ app.get("/auth/google/callback", async (req, res) => {
     sessions[state] = {
       id: userInfo.sub,
       email: userInfo.email,
-      name: userInfo.name,
+      name: profile.name,
       picture: userInfo.picture,
-      suiWallet: suiAddress,
+      suiWallet: profile.sui_address,
       authMethod: "zklogin",
       profileId: profile.id,
       sub: userInfo.sub,
@@ -596,31 +642,54 @@ app.get("/auth/google/callback", async (req, res) => {
       needsUsernameSetup: needsUsername
     };
     
-    console.log(`✅ zkLogin successful for ${userInfo.email}`);
+    console.log(`✅ zkLogin successful for ${userInfo.email} - ${isNewUser ? 'New user created' : 'Existing user logged in'}`);
     
-    // Return success page
+    // Return success page with appropriate message
+    const welcomeMessage = isNewUser ? 
+      `Welcome to the game, ${userInfo.name}!` : 
+      `Welcome back, ${userInfo.name}!`;
+    
     res.send(`
       <html>
         <head>
           <title>Sign In Successful</title>
           <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-            .success { color: green; font-size: 24px; margin-bottom: 20px; }
-            .info { color: #666; margin: 10px 0; }
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+            .container { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
+            .success { color: #4CAF50; font-size: 28px; margin-bottom: 20px; }
+            .info { color: #f0f0f0; margin: 15px 0; font-size: 16px; }
+            .wallet { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; font-family: monospace; word-break: break-all; }
           </style>
         </head>
         <body>
-          <div class="success">✅ Sign In Successful!</div>
-          <div class="info">Welcome, ${userInfo.name}!</div>
-          <div class="info">Sui Wallet: ${suiAddress}</div>
-          <div class="info">You can now close this window and return to the game.</div>
+          <div class="container">
+            <div class="success">✅ Sign In Successful!</div>
+            <div class="info">${welcomeMessage}</div>
+            <div class="info">Your Sui Wallet:</div>
+            <div class="wallet">${profile.sui_address}</div>
+            <div class="info" style="margin-top: 20px;">You can now close this window and return to the game.</div>
+          </div>
         </body>
       </html>
     `);
     
   } catch (err) {
     console.error("❌ OAuth callback error:", err);
-    res.status(500).send("Authentication failed: " + err.message);
+    res.status(500).send(`
+      <html>
+        <head>
+          <title>Authentication Failed</title>
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f44336; color: white; }
+          </style>
+        </head>
+        <body>
+          <h1>❌ Authentication Failed</h1>
+          <p>Error: ${err.message}</p>
+          <p>Please close this window and try again.</p>
+        </body>
+      </html>
+    `);
   }
 });
 
