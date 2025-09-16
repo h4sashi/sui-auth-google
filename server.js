@@ -63,7 +63,7 @@ function needsUsernameSetup(profile) {
 }
 
 
-// Replace the wallet-connect route in server.js with this fixed version
+// Replace the entire wallet-connect route in your server.js with this corrected version
 app.get("/wallet-connect", (req, res) => {
   const { state } = req.query;
   
@@ -308,19 +308,19 @@ app.get("/wallet-connect", (req, res) => {
                 
                 // Wait for DOM to fully load and extensions to initialize
                 const walletChecks = {
-                    'sui-wallet': () => {
+                    'sui-wallet': function() {
                         return window.suiWallet || 
                                (window.sui && window.sui.wallet) ||
                                window.wallet ||
                                (window.chrome && window.chrome.sui);
                     },
-                    'suiet': () => {
+                    'suiet': function() {
                         return window.suiet || window.suietWallet;
                     },
-                    'ethos': () => {
+                    'ethos': function() {
                         return window.ethos || window.ethosWallet;
                     },
-                    'slush': () => {
+                    'slush': function() {
                         return window.slush || 
                                window.slushWallet || 
                                (window.sui && window.sui.slush);
@@ -329,14 +329,14 @@ app.get("/wallet-connect", (req, res) => {
                 
                 let foundCount = 0;
                 
-                for (const [walletId, checkFunction] of Object.entries(walletChecks)) {
+                for (const walletId in walletChecks) {
                     const statusEl = document.getElementById(walletId + '-status');
                     const buttonEl = document.querySelector('#' + walletId + ' button');
                     const itemEl = document.getElementById(walletId);
                     
                     try {
-                        const wallet = checkFunction();
-                        console.log('Checking ${walletId}:', wallet ? 'Found' : 'Not found');
+                        const wallet = walletChecks[walletId]();
+                        console.log('Checking ' + walletId + ':', wallet ? 'Found' : 'Not found');
                         
                         if (wallet && typeof wallet === 'object') {
                             statusEl.innerHTML = '<span class="detected">✓ Detected</span>';
@@ -345,14 +345,14 @@ app.get("/wallet-connect", (req, res) => {
                             itemEl.classList.add('detected');
                             detectedWallets[walletId] = wallet;
                             foundCount++;
-                            console.log('${walletId} detected and ready');
+                            console.log(walletId + ' detected and ready');
                         } else {
-                            statusEl.innerHTML = '<span class="not-detected">Not installed</span> <a href="#" class="install-link" onclick="installWallet(\\''+walletId+'\\')">Install</a>';
+                            statusEl.innerHTML = '<span class="not-detected">Not installed</span> <a href="#" class="install-link" onclick="installWallet(\'' + walletId + '\')">Install</a>';
                             buttonEl.disabled = true;
                             itemEl.classList.remove('detected');
                         }
                     } catch (error) {
-                        console.error('Error checking ${walletId}:', error);
+                        console.error('Error checking ' + walletId + ':', error);
                         statusEl.innerHTML = '<span class="not-detected">Error checking</span>';
                         buttonEl.disabled = true;
                     }
@@ -367,7 +367,7 @@ app.get("/wallet-connect", (req, res) => {
                     statusEl.className = 'status error';
                 }
                 
-                console.log('Total wallets detected: ${foundCount}');
+                console.log('Total wallets detected: ' + foundCount);
             }
             
             // Connect to a specific wallet with better error handling
@@ -382,7 +382,7 @@ app.get("/wallet-connect", (req, res) => {
                 updateStatus('Requesting wallet connection...', 'info');
                 
                 try {
-                    console.log('Attempting to connect to ${walletName}...');
+                    console.log('Attempting to connect to ' + walletName + '...');
                     
                     let connection;
                     
@@ -504,7 +504,7 @@ app.get("/wallet-connect", (req, res) => {
                         updateStatus('Wallet connected successfully! You can now close this window.', 'success');
                         
                         // Auto-close after 3 seconds
-                        setTimeout(() => {
+                        setTimeout(function() {
                             window.close();
                         }, 3000);
                         
@@ -531,7 +531,10 @@ app.get("/wallet-connect", (req, res) => {
                 
                 if (show) {
                     loading.style.display = 'block';
-                    document.querySelectorAll('button').forEach(btn => btn.disabled = true);
+                    var buttons = document.querySelectorAll('button');
+                    for (var i = 0; i < buttons.length; i++) {
+                        buttons[i].disabled = true;
+                    }
                 } else {
                     loading.style.display = 'none';
                     checkWallets(); // Re-enable appropriate buttons
@@ -557,7 +560,7 @@ app.get("/wallet-connect", (req, res) => {
                 console.log('Initializing wallet detection...');
                 
                 // Initial check after a delay to allow extensions to load
-                setTimeout(() => {
+                setTimeout(function() {
                     checkWallets();
                 }, 1000);
                 
@@ -565,8 +568,8 @@ app.get("/wallet-connect", (req, res) => {
                 let retryCount = 0;
                 const maxRetries = 15; // Increased retries
                 
-                const retryDetection = setInterval(() => {
-                    console.log('Wallet detection retry ${retryCount + 1}/${maxRetries}');
+                const retryDetection = setInterval(function() {
+                    console.log('Wallet detection retry ' + (retryCount + 1) + '/' + maxRetries);
                     checkWallets();
                     retryCount++;
                     
