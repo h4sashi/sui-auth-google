@@ -18,7 +18,7 @@ const app = express();
 // Network Configuration
 const NETWORK_CONFIG = {
   // Choose your network here:
-  current: process.env.SUI_NETWORK || 'mainnet', // 'devnet', 'testnet', or 'mainnet'
+  current: process.env.SUI_NETWORK || 'test', // 'devnet', 'testnet', or 'mainnet'
   
   // Network URLs (automatically handled by getFullnodeUrl)
   devnet: 'https://fullnode.devnet.sui.io',
@@ -701,3 +701,4 @@ app.listen(PORT, () => {
   console.log(`🌐 Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()}`);
   console.log(`🔗 RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
 });
+
