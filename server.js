@@ -642,6 +642,30 @@ app.get("/auth/google/callback", async (req, res) => {
       needsUsernameSetup: needsUsername
     };
     
+    // Fetch and display wallet balance in logs
+    try {
+      console.log(`💰 Checking Sui balance for zkLogin user...`);
+      
+      const balance = await suiClient.getBalance({
+        owner: profile.sui_address,
+        coinType: '0x2::sui::SUI'
+      });
+      
+      const formattedBalance = (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4);
+      console.log(`💰 Sui Balance: ${formattedBalance} SUI (${balance.totalBalance} MIST)`);
+      
+      // Optional: Check for any owned objects
+      const objects = await suiClient.getOwnedObjects({
+        owner: profile.sui_address,
+        limit: 5
+      });
+      
+      console.log(`📦 Owned Objects: ${objects.data.length} items`);
+      
+    } catch (balanceError) {
+      console.log(`⚠️ Could not fetch balance: ${balanceError.message} (This is normal for new addresses)`);
+    }
+    
     console.log(`✅ zkLogin successful for ${userInfo.email} - ${isNewUser ? 'New user created' : 'Existing user logged in'}`);
     
     // Return success page with appropriate message
@@ -770,4 +794,3 @@ app.listen(PORT, () => {
   console.log(`🌐 Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()}`);
   console.log(`🔗 RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
 });
-
