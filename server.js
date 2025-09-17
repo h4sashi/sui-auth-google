@@ -63,6 +63,404 @@ function needsUsernameSetup(profile) {
 }
 
 
+// Replace the wallet-connect route with this simplified, working version
+app.get("/wallet-connect", (req, res) => {
+  const { state } = req.query;
+  
+  if (!state) {
+    return res.status(400).send("Missing state parameter");
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Connect Your Sui Wallet</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                margin: 0;
+                padding: 20px;
+                min-height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .container {
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                max-width: 500px;
+                width: 100%;
+            }
+            .title { color: #333; font-size: 24px; margin-bottom: 20px; text-align: center; }
+            .status { padding: 15px; border-radius: 8px; margin: 15px 0; text-align: center; font-weight: bold; }
+            .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+            .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+            .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+            .section { margin: 25px 0; padding: 20px; border: 2px solid #e9ecef; border-radius: 10px; }
+            .wallet-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+            .wallet-detected { border-color: #28a745; background: #f8fff9; }
+            .button {
+                padding: 12px 20px;
+                border: none;
+                border-radius: 6px;
+                font-size: 14px;
+                cursor: pointer;
+                transition: all 0.3s;
+            }
+            .button-primary { background: #007bff; color: white; }
+            .button-primary:hover:not(:disabled) { background: #0056b3; }
+            .button-success { background: #28a745; color: white; }
+            .button-success:hover:not(:disabled) { background: #1e7e34; }
+            .button:disabled { background: #6c757d; cursor: not-allowed; opacity: 0.6; }
+            .input { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; margin: 10px 0; box-sizing: border-box; }
+            .input:focus { border-color: #007bff; outline: none; }
+            .loading { display: none; text-align: center; margin: 20px 0; }
+            .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #007bff; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="title">Connect Your Sui Wallet</div>
+            
+            <div id="status" class="status info">Checking for wallet extensions...</div>
+            
+            <!-- Browser Wallet Section -->
+            <div class="section">
+                <h3>Browser Wallet Extensions</h3>
+                <div id="wallet-list">
+                    <div class="wallet-item" id="sui-wallet-item">
+                        <div>
+                            <strong>Sui Wallet</strong>
+                            <div id="sui-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="sui-connect" onclick="connectBrowserWallet('sui')" disabled>Connect</button>
+                    </div>
+                    
+                    <div class="wallet-item" id="suiet-item">
+                        <div>
+                            <strong>Suiet</strong>
+                            <div id="suiet-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="suiet-connect" onclick="connectBrowserWallet('suiet')" disabled>Connect</button>
+                    </div>
+                    
+                    <div class="wallet-item" id="ethos-item">
+                        <div>
+                            <strong>Ethos</strong>
+                            <div id="ethos-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="ethos-connect" onclick="connectBrowserWallet('ethos')" disabled>Connect</button>
+                    </div>
+                    
+                    <div class="wallet-item" id="slush-item">
+                        <div>
+                            <strong>Slush</strong>
+                            <div id="slush-status">Checking...</div>
+                        </div>
+                        <button class="button button-primary" id="slush-connect" onclick="connectBrowserWallet('slush')" disabled>Connect</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Manual Connection Section -->
+            <div class="section">
+                <h3>Manual Connection</h3>
+                <p>Enter your Sui wallet address directly:</p>
+                <input type="text" 
+                       class="input" 
+                       id="manual-address" 
+                       placeholder="0x1234567890abcdef..."
+                       oninput="validateManualInput()">
+                <button class="button button-success" 
+                        id="manual-connect" 
+                        onclick="connectManualWallet()" 
+                        disabled>Connect Manual Wallet</button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing connection...</p>
+            </div>
+        </div>
+
+        <script>
+            const STATE = '${state}';
+            let walletCheckComplete = false;
+            
+            // Simplified wallet detection
+            function checkWallets() {
+                console.log('Starting wallet detection...');
+                
+                const wallets = {
+                    'sui': {
+                        check: function() { 
+                            return window.suiWallet || window.sui; 
+                        },
+                        statusEl: 'sui-status',
+                        connectEl: 'sui-connect',
+                        itemEl: 'sui-wallet-item'
+                    },
+                    'suiet': {
+                        check: function() { 
+                            return window.suiet; 
+                        },
+                        statusEl: 'suiet-status',
+                        connectEl: 'suiet-connect',
+                        itemEl: 'suiet-item'
+                    },
+                    'ethos': {
+                        check: function() { 
+                            return window.ethos; 
+                        },
+                        statusEl: 'ethos-status',
+                        connectEl: 'ethos-connect',
+                        itemEl: 'ethos-item'
+                    },
+                    'slush': {
+                        check: function() { 
+                            return window.slush || window.slushWallet; 
+                        },
+                        statusEl: 'slush-status',
+                        connectEl: 'slush-connect',
+                        itemEl: 'slush-item'
+                    }
+                };
+                
+                let detectedCount = 0;
+                
+                for (const walletId in wallets) {
+                    const wallet = wallets[walletId];
+                    const statusEl = document.getElementById(wallet.statusEl);
+                    const connectEl = document.getElementById(wallet.connectEl);
+                    const itemEl = document.getElementById(wallet.itemEl);
+                    
+                    try {
+                        const detected = wallet.check();
+                        console.log('Wallet ' + walletId + ':', detected ? 'DETECTED' : 'not found');
+                        
+                        if (detected) {
+                            statusEl.textContent = 'Detected';
+                            statusEl.style.color = '#28a745';
+                            connectEl.disabled = false;
+                            itemEl.classList.add('wallet-detected');
+                            detectedCount++;
+                        } else {
+                            statusEl.textContent = 'Not installed';
+                            statusEl.style.color = '#6c757d';
+                            connectEl.disabled = true;
+                        }
+                    } catch (error) {
+                        console.error('Error checking ' + walletId + ':', error);
+                        statusEl.textContent = 'Check failed';
+                        statusEl.style.color = '#dc3545';
+                        connectEl.disabled = true;
+                    }
+                }
+                
+                walletCheckComplete = true;
+                updateStatus(detectedCount > 0 ? 
+                    detectedCount + ' wallet(s) detected. Choose one to connect.' : 
+                    'No browser wallets detected. Use manual connection below.', 
+                    detectedCount > 0 ? 'success' : 'info');
+                
+                console.log('Wallet detection complete. Found:', detectedCount);
+            }
+            
+            // Connect browser wallet
+            async function connectBrowserWallet(walletType) {
+                console.log('Attempting to connect browser wallet:', walletType);
+                showLoading(true);
+                
+                try {
+                    let wallet;
+                    switch(walletType) {
+                        case 'sui':
+                            wallet = window.suiWallet || window.sui;
+                            break;
+                        case 'suiet':
+                            wallet = window.suiet;
+                            break;
+                        case 'ethos':
+                            wallet = window.ethos;
+                            break;
+                        case 'slush':
+                            wallet = window.slush || window.slushWallet;
+                            break;
+                    }
+                    
+                    if (!wallet) {
+                        throw new Error('Wallet not found');
+                    }
+                    
+                    updateStatus('Requesting wallet permission...', 'info');
+                    
+                    // Try to connect
+                    let accounts;
+                    if (wallet.connect) {
+                        const result = await wallet.connect();
+                        accounts = result.accounts || result;
+                    } else if (wallet.requestPermissions) {
+                        const result = await wallet.requestPermissions();
+                        accounts = result.accounts || result;
+                    } else {
+                        throw new Error('Wallet does not support connection');
+                    }
+                    
+                    if (!accounts || !accounts.length) {
+                        throw new Error('No accounts found');
+                    }
+                    
+                    const address = accounts[0].address;
+                    console.log('Got wallet address:', address);
+                    
+                    await submitWalletConnection({
+                        walletAddress: address,
+                        walletName: walletType,
+                        signature: '',
+                        message: '',
+                        state: STATE
+                    });
+                    
+                } catch (error) {
+                    console.error('Browser wallet connection failed:', error);
+                    updateStatus('Connection failed: ' + error.message, 'error');
+                    showLoading(false);
+                }
+            }
+            
+            // Validate manual input
+            function validateManualInput() {
+                const address = document.getElementById('manual-address').value.trim();
+                const button = document.getElementById('manual-connect');
+                
+                if (address.length >= 60 && address.startsWith('0x')) {
+                    button.disabled = false;
+                } else {
+                    button.disabled = true;
+                }
+            }
+            
+            // Connect manual wallet
+            async function connectManualWallet() {
+                const address = document.getElementById('manual-address').value.trim();
+                console.log('Attempting manual wallet connection:', address);
+                
+                showLoading(true);
+                updateStatus('Connecting manual wallet...', 'info');
+                
+                try {
+                    await submitWalletConnection({
+                        walletAddress: address,
+                        walletName: 'manual',
+                        signature: '',
+                        message: '',
+                        state: STATE
+                    });
+                } catch (error) {
+                    console.error('Manual wallet connection failed:', error);
+                    updateStatus('Manual connection failed: ' + error.message, 'error');
+                    showLoading(false);
+                }
+            }
+            
+            // Submit connection to server
+            async function submitWalletConnection(data) {
+                console.log('Submitting wallet connection:', data);
+                
+                try {
+                    const response = await fetch('/auth/browser-wallet', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    
+                    const responseText = await response.text();
+                    console.log('Server response status:', response.status);
+                    console.log('Server response:', responseText);
+                    
+                    if (!response.ok) {
+                        throw new Error('Server error: ' + response.status + ' - ' + responseText);
+                    }
+                    
+                    const result = JSON.parse(responseText);
+                    
+                    if (result.success) {
+                        updateStatus('SUCCESS! Wallet connected. You can close this window.', 'success');
+                        setTimeout(function() { 
+                            try { window.close(); } catch(e) { console.log('Cannot auto-close window'); }
+                        }, 2000);
+                    } else {
+                        throw new Error(result.error || 'Unknown error');
+                    }
+                    
+                } catch (error) {
+                    console.error('Submit connection error:', error);
+                    throw error;
+                }
+            }
+            
+            // Helper functions
+            function updateStatus(message, type) {
+                const statusEl = document.getElementById('status');
+                statusEl.textContent = message;
+                statusEl.className = 'status ' + type;
+                console.log('Status:', type, '-', message);
+            }
+            
+            function showLoading(show) {
+                const loading = document.getElementById('loading');
+                if (show) {
+                    loading.style.display = 'block';
+                    // Disable all buttons
+                    const buttons = document.querySelectorAll('button');
+                    for (let i = 0; i < buttons.length; i++) {
+                        buttons[i].disabled = true;
+                    }
+                } else {
+                    loading.style.display = 'none';
+                    // Re-run wallet check to re-enable appropriate buttons
+                    if (walletCheckComplete) {
+                        checkWallets();
+                        validateManualInput();
+                    }
+                }
+            }
+            
+            // Initialize
+            function init() {
+                console.log('Initializing wallet connection page with state:', STATE);
+                updateStatus('Checking for wallet extensions...', 'info');
+                
+                // Check immediately
+                setTimeout(checkWallets, 500);
+                
+                // Also check after a longer delay for slow-loading extensions
+                setTimeout(function() {
+                    if (!walletCheckComplete) {
+                        console.log('Running delayed wallet check...');
+                        checkWallets();
+                    }
+                }, 3000);
+            }
+            
+            // Start when page loads
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        </script>
+    </body>
+    </html>
+  `);
+});
+
 // Fixed browser wallet authentication endpoint - using the same pattern as manual wallet
 app.post("/auth/browser-wallet", async (req, res) => {
   console.log("🔗 Browser wallet connection request received");
@@ -276,410 +674,6 @@ app.post("/auth/browser-wallet", async (req, res) => {
   }
 });
 
-// Fixed browser wallet authentication endpoint
-app.post("/auth/browser-wallet", async (req, res) => {
-  console.log("🔗 Browser wallet connection request received");
-  console.log("Request body:", JSON.stringify(req.body, null, 2));
-  
-  try {
-    const { 
-      walletAddress, 
-      signature, 
-      message, 
-      walletName, 
-      state 
-    } = req.body;
-    
-    // Basic validation
-    if (!walletAddress) {
-      console.log("❌ Missing wallet address");
-      return res.status(400).json({
-        success: false,
-        error: "Missing wallet address"
-      });
-    }
-    
-    if (!state) {
-      console.log("❌ Missing state parameter");
-      return res.status(400).json({
-        success: false,
-        error: "Missing state parameter"
-      });
-    }
-    
-    // Validate Sui address format
-    if (!isValidSuiAddress(walletAddress)) {
-      console.log("❌ Invalid address format:", walletAddress);
-      return res.status(400).json({
-        success: false,
-        error: "Invalid Sui address format"
-      });
-    }
-    
-    console.log('✅ Valid wallet address: ${walletAddress}');
-    console.log(`🔗 Browser wallet connecting: ${walletName || 'Unknown'} - ${walletAddress}`);
-    
-    // Optional: Verify signature if provided
-    let signatureVerified = false;
-    if (signature && message) {
-      try {
-        // Here you would typically verify the signature
-        // For now, we'll assume it's valid if provided
-        signatureVerified = true;
-        console.log("✅ Signature verification passed");
-      } catch (sigError) {
-        console.log("⚠️ Signature verification failed:", sigError.message);
-      }
-    }
-    
-    // Check blockchain status
-    let blockchainInfo = {
-      exists: false,
-      balance: '0',
-      hasActivity: false,
-      network: NETWORK_CONFIG.current,
-      error: null
-    };
-    
-    try {
-      console.log('🔗 Checking blockchain status...');
-      
-      const balance = await suiClient.getBalance({
-        owner: walletAddress,
-        coinType: '0x2::sui::SUI'
-      });
-      
-      const objects = await suiClient.getOwnedObjects({
-        owner: walletAddress,
-        limit: 1
-      });
-      
-      blockchainInfo = {
-        exists: true,
-        balance: balance.totalBalance,
-        balanceFormatted: (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4) + ' SUI',
-        hasActivity: parseInt(balance.totalBalance) > 0 || objects.data.length > 0,
-        network: NETWORK_CONFIG.current
-      };
-      
-      console.log(`✅ Blockchain verified:`, blockchainInfo);
-      
-    } catch (blockchainError) {
-      console.log(`⚠️ Blockchain check failed: ${blockchainError.message}`);
-      blockchainInfo.error = blockchainError.message;
-    }
-    
-    // Check if user already exists
-    let { data: existingProfile, error: queryError } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("sui_address", walletAddress)
-      .single();
-    
-    if (queryError && queryError.code !== 'PGRST116') { // PGRST116 is "not found"
-      console.error("❌ Database query error:", queryError);
-      return res.status(500).json({ 
-        success: false,
-        error: "Database query failed" 
-      });
-    }
-    
-    let finalProfile;
-    let isNewUser = false;
-    
-    if (existingProfile) {
-      console.log("✅ Found existing user profile:", existingProfile.id);
-      
-      // Update existing profile
-      const { data: updated, error: updateError } = await supabase
-        .from("user_profiles")
-        .update({ 
-          updated_at: new Date().toISOString(),
-          auth_method: walletName === 'manual' ? 'manual_wallet' : 'browser_wallet',
-          last_wallet_name: walletName !== 'manual' ? walletName : null,
-          last_signature_verified: signatureVerified
-        })
-        .eq("id", existingProfile.id)
-        .select()
-        .single();
-        
-      if (updateError) {
-        console.error("❌ Profile update error:", updateError);
-        return res.status(500).json({ 
-          success: false,
-          error: "Profile update failed" 
-        });
-      }
-      
-      finalProfile = updated;
-      console.log("✅ Existing user profile updated");
-    } else {
-      console.log("🆕 Creating new user profile");
-      
-      const tempName = 'Player_${walletAddress.substring(0, 8)}';
-      
-      const profileData = {
-        email: null,
-        google_id: null,
-        name: tempName,
-        picture: null,
-        user_salt: null,
-        sui_address: walletAddress,
-        auth_method: walletName === 'manual' ? 'manual_wallet' : 'browser_wallet',
-        last_wallet_name: walletName !== 'manual' ? walletName : null,
-        last_signature_verified: signatureVerified,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      const { data: inserted, error: insertError } = await supabase
-        .from("user_profiles")
-        .insert([profileData])
-        .select()
-        .single();
-        
-      if (insertError) {
-        console.error("❌ Profile insert error:", insertError);
-        return res.status(500).json({ 
-          success: false,
-          error: "Profile creation failed: " + insertError.message 
-        });
-      }
-      
-      finalProfile = inserted;
-      isNewUser = true;
-      console.log("✅ New user profile created:", finalProfile.id);
-    }
-    
-    const needsUsername = needsUsernameSetup(finalProfile);
-    console.log(`Username setup needed: ${needsUsername}`);
-    
-    // Create session for Unity polling
-    const sessionData = {
-      id: finalProfile.id,
-      email: finalProfile.email,
-      name: finalProfile.name,
-      picture: finalProfile.picture,
-      suiWallet: walletAddress,
-      authMethod: walletName === 'manual' ? 'manual_wallet' : 'browser_wallet',
-      profileId: finalProfile.id,
-      needsUsernameSetup: needsUsername,
-      walletName: walletName !== 'manual' ? walletName : null,
-      signatureVerified: signatureVerified
-    };
-    
-    // Store session for Unity polling
-    sessions[state] = sessionData;
-    console.log("✅ Session stored with state:", state);
-    console.log("Session data:", JSON.stringify(sessionData, null, 2));
-    
-    const responseData = {
-      success: true,
-      message: isNewUser ? "New wallet connected successfully" : "Wallet reconnected successfully",
-      needsUsernameSetup: needsUsername,
-      blockchain: blockchainInfo,
-      sessionState: state, // Return the session state so Unity can poll for it
-      profile: {
-        id: finalProfile.id,
-        name: finalProfile.name,
-        suiWallet: walletAddress,
-        authMethod: walletName === 'manual' ? 'manual_wallet' : 'browser_wallet',
-        profileId: finalProfile.id,
-        needsUsernameSetup: needsUsername,
-        walletName: walletName !== 'manual' ? walletName : null,
-        signatureVerified: signatureVerified
-      }
-    };
-    
-    console.log("✅ Sending success response:", JSON.stringify(responseData, null, 2));
-    res.json(responseData);
-    
-  } catch (err) {
-    console.error("❌ Browser wallet connection error:", err);
-    res.status(500).json({ 
-      success: false,
-      error: "Wallet connection failed: " + err.message 
-    });
-  }
-});
-
-// Enhanced manual wallet connection with better error handling
-app.post("/auth/wallet", async (req, res) => {
-  console.log("🔗 Manual wallet connection request received");
-  console.log("Request body:", JSON.stringify(req.body, null, 2));
-  
-  try {
-    const { walletAddress, state } = req.body;
-    
-    if (!walletAddress) {
-      console.log("❌ Missing wallet address");
-      return res.status(400).json({ 
-        success: false,
-        error: "Missing wallet address" 
-      });
-    }
-    
-    if (!isValidSuiAddress(walletAddress)) {
-      console.log("❌ Invalid address format:", walletAddress);
-      return res.status(400).json({ 
-        success: false,
-        error: "Invalid Sui wallet address format" 
-      });
-    }
-    
-    console.log("✅ Manual wallet connection:", { walletAddress });
-    
-    // Check blockchain status
-    let blockchainStatus = null;
-    try {
-      console.log('🔗 Checking blockchain status...');
-      
-      const balance = await suiClient.getBalance({
-        owner: walletAddress,
-        coinType: '0x2::sui::SUI'
-      });
-      
-      blockchainStatus = {
-        verified: true,
-        balance: balance.totalBalance,
-        balanceFormatted: (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4) + ' SUI',
-        network: NETWORK_CONFIG.current
-      };
-      
-      console.log(`[OK] Wallet verified on ${NETWORK_CONFIG.current}: ${balance.totalBalance} MIST`);
-      
-    } catch (blockchainError) {
-      console.log(`[WARN] Wallet not active on ${NETWORK_CONFIG.current}: ${blockchainError.message}`);
-      blockchainStatus = {
-        verified: false,
-        error: blockchainError.message,
-        network: NETWORK_CONFIG.current
-      };
-    }
-    
-    // Check for existing profile
-    let { data: existingProfile, error: queryError } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("sui_address", walletAddress)
-      .single();
-    
-    if (queryError && queryError.code !== 'PGRST116') {
-      console.error("❌ Database query error:", queryError);
-      return res.status(500).json({ 
-        success: false,
-        error: "Database query failed" 
-      });
-    }
-    
-    let finalProfile;
-    let isNewUser = false;
-    
-    if (existingProfile) {
-      console.log("✅ Found existing manual wallet user");
-      
-      const { data: updated, error: updateError } = await supabase
-        .from("user_profiles")
-        .update({ 
-          updated_at: new Date().toISOString(),
-          auth_method: "manual_wallet"
-        })
-        .eq("id", existingProfile.id)
-        .select()
-        .single();
-        
-      if (updateError) {
-        console.error("❌ Profile update error:", updateError);
-        return res.status(500).json({ 
-          success: false,
-          error: "Profile update failed" 
-        });
-      }
-      
-      finalProfile = updated;
-      console.log("✅ Existing manual wallet user logged in");
-    } else {
-      console.log("🆕 Creating new manual wallet user");
-      
-      const tempName = `Player_${walletAddress.substring(0, 8)}`;
-      
-      const profileData = {
-        email: null,
-        google_id: null,
-        name: tempName,
-        picture: null,
-        user_salt: null,
-        sui_address: walletAddress,
-        auth_method: "manual_wallet",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      const { data: inserted, error: insertError } = await supabase
-        .from("user_profiles")
-        .insert([profileData])
-        .select()
-        .single();
-        
-      if (insertError) {
-        console.error("❌ Profile insert error:", insertError);
-        return res.status(500).json({ 
-          success: false,
-          error: "Profile creation failed: " + insertError.message 
-        });
-      }
-      
-      finalProfile = inserted;
-      isNewUser = true;
-      console.log("✅ New manual wallet user created");
-    }
-    
-    const needsUsername = needsUsernameSetup(finalProfile);
-    console.log(`Username setup needed: ${needsUsername}`);
-    
-    // Create session for Unity polling if state provided
-    if (state) {
-      const sessionData = {
-        id: finalProfile.id,
-        email: finalProfile.email,
-        name: finalProfile.name,
-        picture: finalProfile.picture,
-        suiWallet: walletAddress,
-        authMethod: "manual_wallet",
-        profileId: finalProfile.id,
-        needsUsernameSetup: needsUsername
-      };
-      
-      sessions[state] = sessionData;
-      console.log("✅ Session stored for Unity polling with state:", state);
-    }
-    
-    const responseData = {
-      success: true,
-      message: isNewUser ? "New wallet connected successfully" : "Wallet reconnected successfully",
-      needsUsernameSetup: needsUsername,
-      blockchain: blockchainStatus,
-      profile: {
-        id: finalProfile.id,
-        name: finalProfile.name,
-        suiWallet: walletAddress,
-        authMethod: "manual_wallet",
-        profileId: finalProfile.id,
-        needsUsernameSetup: needsUsername
-      }
-    };
-    
-    console.log("✅ Sending manual wallet success response:", JSON.stringify(responseData, null, 2));
-    res.json(responseData);
-    
-  } catch (err) {
-    console.error("❌ Manual wallet connection error:", err);
-    res.status(500).json({ 
-      success: false,
-      error: "Wallet connection failed: " + err.message 
-    });
-  }
-});
 
 // Enhanced wallet validation with better debugging
 app.post("/validate-wallet", async (req, res) => {
