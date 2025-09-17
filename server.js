@@ -843,187 +843,204 @@ app.post("/setup-username", async (req, res) => {
   }
 });
 
-// Google OAuth callback (unchanged)
+
+// Fixed Google OAuth callback section
 app.get("/auth/google/callback", async (req, res) => {
-  const { code, state } = req.query;
-  
-  if (!code) {
-    console.error("No authorization code received");
-    return res.status(400).send("Authorization failed - no code");
-  }
-  
-  try {
-    console.log("Processing Google OAuth callback...");
+    const { code, state } = req.query;
     
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: process.env.REDIRECT_URI,
-        grant_type: "authorization_code"
-      })
-    });
-    
-    const tokens = await tokenResponse.json();
-    
-    if (!tokens.id_token) {
-      throw new Error("No ID token received");
+    if (!code) {
+        console.error("No authorization code received");
+        return res.status(400).send("Authorization failed - no code");
     }
-    
-    const userInfo = jwtDecode(tokens.id_token);
-    console.log("User info:", { 
-      sub: userInfo.sub, 
-      email: userInfo.email, 
-      name: userInfo.name 
-    });
-    
-    let profile;
-    let isNewUser = false;
-    
-    const { data: existingProfile, error: fetchError } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("google_id", userInfo.sub)
-      .single();
-    
-    if (existingProfile) {
-      console.log("Existing zkLogin user found - updating login time");
-      
-      const { data: updatedProfile, error: updateError } = await supabase
-        .from("user_profiles")
-        .update({ 
-          updated_at: new Date().toISOString(),
-          name: userInfo.name,
-          picture: userInfo.picture
-        })
-        .eq("id", existingProfile.id)
-        .select()
-        .single();
-        
-      if (updateError) {
-        console.error("Profile update error:", updateError);
-        throw new Error("Profile update failed");
-      }
-      
-      profile = updatedProfile;
-      console.log(`Retrieved existing Sui address: ${profile.sui_address}`);
-      
-    } else {
-      console.log("New zkLogin user - creating profile");
-      
-      const userSalt = generateRandomness();
-      const suiAddress = jwtToAddress(tokens.id_token, userSalt);
-      
-      console.log("Generated new Sui address:", suiAddress);
-      
-      const profileData = {
-        email: userInfo.email,
-        google_id: userInfo.sub,
-        name: userInfo.name,
-        picture: userInfo.picture,
-        user_salt: userSalt,
-        sui_address: suiAddress,
-        auth_method: "zklogin",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      const { data: insertedProfile, error: insertError } = await supabase
-        .from("user_profiles")
-        .insert([profileData])
-        .select()
-        .single();
-        
-      if (insertError) {
-        console.error("Profile insert error:", insertError);
-        throw new Error("Profile creation failed");
-      }
-      
-      profile = insertedProfile;
-      isNewUser = true;
-    }
-    
-    const needsUsername = needsUsernameSetup(profile);
-    
-    sessions[state] = {
-      id: userInfo.sub,
-      email: userInfo.email,
-      name: profile.name,
-      picture: userInfo.picture,
-      suiWallet: profile.sui_address,
-      authMethod: "zklogin",
-      profileId: profile.id,
-      sub: userInfo.sub,
-      aud: userInfo.aud,
-      needsUsernameSetup: needsUsername
-    };
-    
+
     try {
-      console.log(`Checking Sui balance for zkLogin user...`);
-      
-      const balance = await suiClient.getBalance({
-        owner: profile.sui_address,
-        coinType: '0x2::sui::SUI'
-      });
-      
-      const formattedBalance = (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4);
-      console.log(`Sui Balance: ${formattedBalance} SUI (${balance.totalBalance} MIST)`);
-      
-    } catch (balanceError) {
-      console.log(`Could not fetch balance: ${balanceError.message} (This is normal for new addresses)`);
+        console.log("Processing Google OAuth callback...");
+        
+        const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+                code,
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                client_secret: process.env.GOOGLE_CLIENT_SECRET,
+                redirect_uri: process.env.REDIRECT_URI,
+                grant_type: "authorization_code"
+            })
+        });
+
+        const tokens = await tokenResponse.json();
+        if (!tokens.id_token) {
+            throw new Error("No ID token received");
+        }
+
+        const userInfo = jwtDecode(tokens.id_token);
+        console.log("User info:", {
+            sub: userInfo.sub,
+            email: userInfo.email,
+            name: userInfo.name
+        });
+
+        let profile;
+        let isNewUser = false;
+
+        const { data: existingProfile, error: fetchError } = await supabase
+            .from("user_profiles")
+            .select("*")
+            .eq("google_id", userInfo.sub)
+            .single();
+
+        if (existingProfile) {
+            console.log("Existing zkLogin user found - checking if username needs preservation");
+            
+            // Check if user has a custom username (not auto-generated and not Google name)
+            const hasCustomUsername = existingProfile.name && 
+                                    !existingProfile.name.startsWith('Player_0x') &&
+                                    existingProfile.name !== userInfo.name;
+            
+            console.log(`Existing name: "${existingProfile.name}"`);
+            console.log(`Google name: "${userInfo.name}"`);
+            console.log(`Has custom username: ${hasCustomUsername}`);
+            
+            // Prepare update data - preserve custom username if it exists
+            const updateData = {
+                updated_at: new Date().toISOString(),
+                picture: userInfo.picture, // Always update picture
+                email: userInfo.email      // Always update email in case it changed
+            };
+            
+            // Only update name if user doesn't have a custom username
+            if (!hasCustomUsername) {
+                updateData.name = userInfo.name;
+                console.log("No custom username detected - updating name from Google profile");
+            } else {
+                console.log("Custom username detected - preserving existing name");
+            }
+
+            const { data: updatedProfile, error: updateError } = await supabase
+                .from("user_profiles")
+                .update(updateData)
+                .eq("id", existingProfile.id)
+                .select()
+                .single();
+
+            if (updateError) {
+                console.error("Profile update error:", updateError);
+                throw new Error("Profile update failed");
+            }
+
+            profile = updatedProfile;
+            console.log(`Final profile name: "${profile.name}"`);
+            console.log(`Retrieved existing Sui address: ${profile.sui_address}`);
+            
+        } else {
+            console.log("New zkLogin user - creating profile");
+            
+            const userSalt = generateRandomness();
+            const suiAddress = jwtToAddress(tokens.id_token, userSalt);
+            console.log("Generated new Sui address:", suiAddress);
+
+            const profileData = {
+                email: userInfo.email,
+                google_id: userInfo.sub,
+                name: userInfo.name, // For new users, use Google name initially
+                picture: userInfo.picture,
+                user_salt: userSalt,
+                sui_address: suiAddress,
+                auth_method: "zklogin",
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+
+            const { data: insertedProfile, error: insertError } = await supabase
+                .from("user_profiles")
+                .insert([profileData])
+                .select()
+                .single();
+
+            if (insertError) {
+                console.error("Profile insert error:", insertError);
+                throw new Error("Profile creation failed");
+            }
+
+            profile = insertedProfile;
+            isNewUser = true;
+        }
+
+        const needsUsername = needsUsernameSetup(profile);
+
+        sessions[state] = {
+            id: userInfo.sub,
+            email: userInfo.email,
+            name: profile.name, // Use the preserved/updated name from database
+            picture: userInfo.picture,
+            suiWallet: profile.sui_address,
+            authMethod: "zklogin",
+            profileId: profile.id,
+            sub: userInfo.sub,
+            aud: userInfo.aud,
+            needsUsernameSetup: needsUsername
+        };
+
+        try {
+            console.log(`Checking Sui balance for zkLogin user...`);
+            const balance = await suiClient.getBalance({
+                owner: profile.sui_address,
+                coinType: '0x2::sui::SUI'
+            });
+            const formattedBalance = (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4);
+            console.log(`Sui Balance: ${formattedBalance} SUI (${balance.totalBalance} MIST)`);
+        } catch (balanceError) {
+            console.log(`Could not fetch balance: ${balanceError.message} (This is normal for new addresses)`);
+        }
+
+        console.log(`zkLogin successful for ${userInfo.email} - ${isNewUser ? 'New user created' : 'Existing user logged in'}`);
+        
+        const welcomeMessage = isNewUser ?
+            `Welcome to the game, ${profile.name}!` : // Use profile name, not Google name
+            `Welcome back, ${profile.name}!`;
+
+        res.send(`
+            <html>
+            <head>
+                <title>Sign In Successful</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+                    .container { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
+                    .success { color: #4CAF50; font-size: 28px; margin-bottom: 20px; }
+                    .info { color: #f0f0f0; margin: 15px 0; font-size: 16px; }
+                    .wallet { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; font-family: monospace; word-break: break-all; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="success">Sign In Successful!</div>
+                    <div class="info">${welcomeMessage}</div>
+                    <div class="info">Your Sui Wallet:</div>
+                    <div class="wallet">${profile.sui_address}</div>
+                    <div class="info" style="margin-top: 20px;">You can now close this window and return to the game.</div>
+                </div>
+            </body>
+            </html>
+        `);
+
+    } catch (err) {
+        console.error("OAuth callback error:", err);
+        res.status(500).send(`
+            <html>
+            <head>
+                <title>Authentication Failed</title>
+                <style>
+                    body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f44336; color: white; }
+                </style>
+            </head>
+            <body>
+                <h1>Authentication Failed</h1>
+                <p>Error: ${err.message}</p>
+                <p>Please close this window and try again.</p>
+            </body>
+            </html>
+        `);
     }
-    
-    console.log(`zkLogin successful for ${userInfo.email} - ${isNewUser ? 'New user created' : 'Existing user logged in'}`);
-    
-    const welcomeMessage = isNewUser ? 
-      `Welcome to the game, ${userInfo.name}!` : 
-      `Welcome back, ${userInfo.name}!`;
-    
-    res.send(`
-      <html>
-        <head>
-          <title>Sign In Successful</title>
-          <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-            .container { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
-            .success { color: #4CAF50; font-size: 28px; margin-bottom: 20px; }
-            .info { color: #f0f0f0; margin: 15px 0; font-size: 16px; }
-            .wallet { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; font-family: monospace; word-break: break-all; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="success">Sign In Successful!</div>
-            <div class="info">${welcomeMessage}</div>
-            <div class="info">Your Sui Wallet:</div>
-            <div class="wallet">${profile.sui_address}</div>
-            <div class="info" style="margin-top: 20px;">You can now close this window and return to the game.</div>
-          </div>
-        </body>
-      </html>
-    `);
-    
-  } catch (err) {
-    console.error("OAuth callback error:", err);
-    res.status(500).send(`
-      <html>
-        <head>
-          <title>Authentication Failed</title>
-          <style>
-            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f44336; color: white; }
-          </style>
-        </head>
-        <body>
-          <h1>Authentication Failed</h1>
-          <p>Error: ${err.message}</p>
-          <p>Please close this window and try again.</p>
-        </body>
-      </html>
-    `);
-  }
 });
 
 // Unity polling endpoint
@@ -1063,823 +1080,3 @@ app.listen(PORT, () => {
   console.log(`Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()}`);
   console.log(`RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// // server.js - Enhanced with network configuration and Sui SDK
-// import express from "express";
-// import bodyParser from "body-parser";
-// import fetch from "node-fetch";
-// import { jwtDecode } from "jwt-decode";
-// import { generateRandomness, jwtToAddress } from "@mysten/sui/zklogin";
-// import { isValidSuiAddress } from "@mysten/sui/utils";
-
-// // Updated Sui SDK imports - Fixed for current version
-// import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
-// import { Transaction } from '@mysten/sui/transactions'; // Changed from TransactionBlock
-// import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-
-// import supabase from "./supabaseClient.js";
-
-// const app = express();
-
-// // Network Configuration
-// const NETWORK_CONFIG = {
-//   // Choose your network here:
-//   current: process.env.SUI_NETWORK || 'test', // 'devnet', 'testnet', or 'mainnet'
-  
-//   // Network URLs (automatically handled by getFullnodeUrl)
-//   devnet: 'https://fullnode.devnet.sui.io',
-//   testnet: 'https://fullnode.testnet.sui.io', 
-//   mainnet: 'https://fullnode.mainnet.sui.io'
-// };
-
-// // Initialize Sui Client
-// const suiClient = new SuiClient({ 
-//   url: getFullnodeUrl(NETWORK_CONFIG.current) 
-// });
-
-// console.log(`🌐 Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()} network`);
-// console.log(`🔗 RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
-
-// // CORS middleware
-// app.use((req, res, next) => {
-//   res.header('Access-Control-Allow-Origin', '*');
-//   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-//   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-//   if (req.method === 'OPTIONS') {
-//     res.sendStatus(200);
-//   } else {
-//     next();
-//   }
-// });
-
-// app.use(bodyParser.json());
-
-// // Add request logging middleware
-// app.use((req, res, next) => {
-//   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-//   if (req.body && Object.keys(req.body).length > 0) {
-//     console.log('Request Body:', JSON.stringify(req.body, null, 2));
-//   }
-//   next();
-// });
-
-// const PORT = process.env.PORT || 3000;
-// const sessions = {}; // { state: profile }
-
-// // Helper function to get network info
-// async function getNetworkInfo() {
-//   try {
-//     const chainId = await suiClient.getChainIdentifier();
-//     const latestCheckpoint = await suiClient.getLatestCheckpointSequenceNumber();
-    
-//     return {
-//       network: NETWORK_CONFIG.current,
-//       chainId,
-//       latestCheckpoint: latestCheckpoint.toString(),
-//       rpcUrl: getFullnodeUrl(NETWORK_CONFIG.current)
-//     };
-//   } catch (error) {
-//     console.error('Failed to get network info:', error);
-//     return {
-//       network: NETWORK_CONFIG.current,
-//       error: error.message,
-//       rpcUrl: getFullnodeUrl(NETWORK_CONFIG.current)
-//     };
-//   }
-// }
-
-// // Helper function to check if user needs username setup
-// function needsUsernameSetup(profile) {
-//   if (!profile || !profile.name) return true;
-//   const isAutoGenerated = profile.name.startsWith('Player_0x') && profile.name.length <= 16;
-//   return isAutoGenerated;
-// }
-
-// // Network status endpoint
-// app.get("/network/status", async (req, res) => {
-//   try {
-//     const networkInfo = await getNetworkInfo();
-    
-//     res.json({
-//       ...networkInfo,
-//       timestamp: new Date().toISOString(),
-//       supportedNetworks: ['devnet', 'testnet', 'mainnet']
-//     });
-//   } catch (err) {
-//     console.error("Network status error:", err);
-//     res.status(500).json({ 
-//       error: "Failed to get network status",
-//       message: err.message 
-//     });
-//   }
-// });
-
-// // Enhanced wallet validation with blockchain verification
-// app.post("/validate-wallet", async (req, res) => {
-//   console.log("🔍 Wallet validation request received");
-  
-//   try {
-//     const { address } = req.body;
-    
-//     if (!address) {
-//       return res.status(400).json({
-//         valid: false,
-//         address: null,
-//         message: "No wallet address provided"
-//       });
-//     }
-    
-//     const cleanAddress = address.trim();
-//     console.log(`🔍 Validating address: ${cleanAddress}`);
-    
-//     // Format validation
-//     const isValidFormat = isValidSuiAddress(cleanAddress);
-    
-//     let blockchainInfo = {
-//       exists: false,
-//       balance: '0',
-//       hasActivity: false,
-//       error: null
-//     };
-    
-//     // If format is valid, check blockchain
-//     if (isValidFormat) {
-//       try {
-//         console.log('🔗 Checking blockchain status...');
-        
-//         // Check balance
-//         const balance = await suiClient.getBalance({
-//           owner: cleanAddress,
-//           coinType: '0x2::sui::SUI'
-//         });
-        
-//         // Check for any owned objects
-//         const objects = await suiClient.getOwnedObjects({
-//           owner: cleanAddress,
-//           limit: 1
-//         });
-        
-//         blockchainInfo = {
-//           exists: true,
-//           balance: balance.totalBalance,
-//           balanceFormatted: (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4) + ' SUI',
-//           hasActivity: parseInt(balance.totalBalance) > 0 || objects.data.length > 0,
-//           network: NETWORK_CONFIG.current
-//         };
-        
-//         console.log(`✅ Blockchain info:`, blockchainInfo);
-        
-//       } catch (blockchainError) {
-//         console.log(`⚠️ Blockchain check failed: ${blockchainError.message}`);
-//         blockchainInfo.error = blockchainError.message;
-//         // Note: This is normal for new addresses that haven't been used yet
-//       }
-//     }
-    
-//     const responseData = {
-//       valid: isValidFormat,
-//       address: cleanAddress,
-//       message: isValidFormat 
-//         ? `Valid Sui address${blockchainInfo.exists ? ` (Balance: ${blockchainInfo.balanceFormatted})` : ' (Not yet active on blockchain)'}` 
-//         : "Invalid Sui address format",
-//       blockchain: blockchainInfo,
-//       network: NETWORK_CONFIG.current
-//     };
-    
-//     console.log("📤 Sending response:", responseData);
-//     res.json(responseData);
-    
-//   } catch (err) {
-//     console.error("❌ Validation error:", err);
-//     res.status(500).json({
-//       valid: false,
-//       address: req.body?.address || null,
-//       message: "Server error during validation: " + err.message
-//     });
-//   }
-// });
-
-// // Get detailed wallet information
-// app.get("/wallet/:address/info", async (req, res) => {
-//   const { address } = req.params;
-  
-//   try {
-//     if (!isValidSuiAddress(address)) {
-//       return res.status(400).json({ error: "Invalid wallet address" });
-//     }
-    
-//     console.log(`🔍 Fetching wallet info for: ${address}`);
-    
-//     // Get balance for SUI
-//     const suiBalance = await suiClient.getBalance({
-//       owner: address,
-//       coinType: '0x2::sui::SUI'
-//     });
-    
-//     // Get all coin balances
-//     const allBalances = await suiClient.getAllBalances({
-//       owner: address
-//     });
-    
-//     // Get owned objects (limited to 20 for performance)
-//     const objects = await suiClient.getOwnedObjects({
-//       owner: address,
-//       limit: 20,
-//       options: {
-//         showType: true,
-//         showContent: true
-//       }
-//     });
-    
-//     // Get recent transactions (limited to 10)
-//     const transactions = await suiClient.queryTransactionBlocks({
-//       filter: { FromAddress: address },
-//       limit: 10,
-//       order: 'descending'
-//     });
-    
-//     // Analyze object types
-//     const objectTypes = {};
-//     objects.data.forEach(obj => {
-//       if (obj.data?.type) {
-//         const type = obj.data.type.split('::').pop() || obj.data.type;
-//         objectTypes[type] = (objectTypes[type] || 0) + 1;
-//       }
-//     });
-    
-//     const walletInfo = {
-//       address,
-//       network: NETWORK_CONFIG.current,
-//       balance: {
-//         sui: {
-//           amount: suiBalance.totalBalance,
-//           formatted: (parseInt(suiBalance.totalBalance) / 1_000_000_000).toFixed(4) + ' SUI'
-//         },
-//         allCoins: allBalances
-//       },
-//       objects: {
-//         total: objects.data.length,
-//         types: objectTypes,
-//         hasNFTs: Object.keys(objectTypes).some(type => !type.includes('Coin'))
-//       },
-//       activity: {
-//         transactionCount: transactions.data.length,
-//         recentTransactions: transactions.data.slice(0, 3).map(tx => ({
-//           digest: tx.digest,
-//           timestamp: tx.timestampMs ? new Date(parseInt(tx.timestampMs)).toISOString() : null
-//         }))
-//       },
-//       status: {
-//         isActive: parseInt(suiBalance.totalBalance) > 0 || objects.data.length > 0,
-//         isEmpty: parseInt(suiBalance.totalBalance) === 0 && objects.data.length === 0
-//       }
-//     };
-    
-//     console.log(`✅ Wallet info retrieved for ${address}`);
-//     res.json(walletInfo);
-    
-//   } catch (err) {
-//     console.error("Wallet info error:", err);
-//     res.status(500).json({ 
-//       error: "Failed to fetch wallet info",
-//       message: err.message,
-//       address 
-//     });
-//   }
-// });
-
-// // Enhanced manual wallet connection with blockchain verification
-// app.post("/auth/wallet", async (req, res) => {
-//   const { walletAddress, state } = req.body;
-  
-//   try {
-//     // Validate format
-//     if (!walletAddress || !isValidSuiAddress(walletAddress)) {
-//       return res.status(400).json({ 
-//         success: false,
-//         error: "Invalid Sui wallet address format" 
-//       });
-//     }
-    
-//     console.log("✅ Manual wallet connection:", { walletAddress });
-    
-//     // Optional blockchain verification
-//     let blockchainStatus = null;
-//     try {
-//       const balance = await suiClient.getBalance({
-//         owner: walletAddress,
-//         coinType: '0x2::sui::SUI'
-//       });
-      
-//       blockchainStatus = {
-//         verified: true,
-//         balance: balance.totalBalance,
-//         network: NETWORK_CONFIG.current
-//       };
-      
-//       console.log(`✅ Wallet verified on ${NETWORK_CONFIG.current}: ${balance.totalBalance} MIST`);
-      
-//     } catch (blockchainError) {
-//       console.log(`⚠️ Wallet not active on ${NETWORK_CONFIG.current}: ${blockchainError.message}`);
-//       blockchainStatus = {
-//         verified: false,
-//         error: blockchainError.message,
-//         network: NETWORK_CONFIG.current
-//       };
-//     }
-    
-//     // Continue with existing database logic
-//     let { data: existingProfile, error } = await supabase
-//       .from("user_profiles")
-//       .select("*")
-//       .eq("sui_address", walletAddress)
-//       .single();
-    
-//     let finalProfile;
-//     let isNewUser = false;
-    
-//     if (existingProfile) {
-//       // Update existing profile
-//       const { data: updated, error: updateError } = await supabase
-//         .from("user_profiles")
-//         .update({ 
-//           updated_at: new Date().toISOString()
-//         })
-//         .eq("id", existingProfile.id)
-//         .select()
-//         .single();
-        
-//       if (updateError) {
-//         console.error("Profile update error:", updateError);
-//         return res.status(500).json({ 
-//           success: false,
-//           error: "Profile update failed" 
-//         });
-//       }
-      
-//       finalProfile = updated;
-//       console.log("✅ Existing wallet user logged in");
-//     } else {
-//       // Create new profile
-//       const tempName = `Player_${walletAddress.substring(0, 8)}`;
-      
-//       const profileData = {
-//         email: null,
-//         google_id: null,
-//         name: tempName,
-//         picture: null,
-//         user_salt: null,
-//         sui_address: walletAddress,
-//         auth_method: "manual_wallet",
-//         created_at: new Date().toISOString(),
-//         updated_at: new Date().toISOString()
-//       };
-      
-//       const { data: inserted, error: insertError } = await supabase
-//         .from("user_profiles")
-//         .insert([profileData])
-//         .select()
-//         .single();
-        
-//       if (insertError) {
-//         console.error("Profile insert error:", insertError);
-//         return res.status(500).json({ 
-//           success: false,
-//           error: "Profile creation failed" 
-//         });
-//       }
-      
-//       finalProfile = inserted;
-//       isNewUser = true;
-//       console.log("✅ New wallet user created");
-//     }
-    
-//     const needsUsername = needsUsernameSetup(finalProfile);
-    
-//     // Store session for Unity polling
-//     if (state) {
-//       sessions[state] = {
-//         id: walletAddress.substring(0, 16),
-//         email: finalProfile.email,
-//         name: finalProfile.name,
-//         picture: finalProfile.picture,
-//         suiWallet: walletAddress,
-//         authMethod: "manual_wallet",
-//         profileId: finalProfile.id,
-//         needsUsernameSetup: needsUsername
-//       };
-//     }
-    
-//     res.json({
-//       success: true,
-//       message: isNewUser ? "New wallet connected successfully" : "Wallet reconnected successfully",
-//       needsUsernameSetup: needsUsername,
-//       blockchain: blockchainStatus,
-//       profile: {
-//         id: finalProfile.id,
-//         name: finalProfile.name,
-//         suiWallet: walletAddress,
-//         authMethod: "manual_wallet",
-//         profileId: finalProfile.id,
-//         needsUsernameSetup: needsUsername
-//       }
-//     });
-    
-//   } catch (err) {
-//     console.error("Manual wallet connection error:", err);
-//     res.status(500).json({ 
-//       success: false,
-//       error: "Wallet connection failed: " + err.message 
-//     });
-//   }
-// });
-
-// // Username setup endpoint
-// app.post("/setup-username", async (req, res) => {
-//   const { walletAddress, username } = req.body;
-  
-//   try {
-//     if (!walletAddress || !username) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Wallet address and username are required"
-//       });
-//     }
-    
-//     const trimmedUsername = username.trim();
-    
-//     // Validate username
-//     if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Username must be between 3 and 20 characters"
-//       });
-//     }
-    
-//     if (!/^[a-zA-Z0-9_-]+$/.test(trimmedUsername)) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Username can only contain letters, numbers, underscore, and hyphen"
-//       });
-//     }
-    
-//     // Check if username already exists
-//     const { data: existingUser, error: checkError } = await supabase
-//       .from("user_profiles")
-//       .select("id")
-//       .eq("name", trimmedUsername)
-//       .neq("sui_address", walletAddress)
-//       .single();
-    
-//     if (existingUser) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Username already taken"
-//       });
-//     }
-    
-//     // Update user profile
-//     const { data: updatedProfile, error: updateError } = await supabase
-//       .from("user_profiles")
-//       .update({ 
-//         name: trimmedUsername,
-//         updated_at: new Date().toISOString()
-//       })
-//       .eq("sui_address", walletAddress)
-//       .select()
-//       .single();
-      
-//     if (updateError) {
-//       console.error("Username update error:", updateError);
-//       return res.status(500).json({
-//         success: false,
-//         error: "Failed to update username"
-//       });
-//     }
-    
-//     res.json({
-//       success: true,
-//       message: "Username updated successfully",
-//       profile: {
-//         id: updatedProfile.id,
-//         name: updatedProfile.name,
-//         suiWallet: updatedProfile.sui_address,
-//         authMethod: updatedProfile.auth_method,
-//         profileId: updatedProfile.id,
-//         needsUsernameSetup: false
-//       }
-//     });
-    
-//   } catch (err) {
-//     console.error("Username setup error:", err);
-//     res.status(500).json({
-//       success: false,
-//       error: "Username setup failed: " + err.message
-//     });
-//   }
-// });
-
-// // Replace your existing Google OAuth callback handler with this fixed version
-
-// // Google OAuth callback 
-// app.get("/auth/google/callback", async (req, res) => {
-//   const { code, state } = req.query;
-  
-//   if (!code) {
-//     console.error("❌ No authorization code received");
-//     return res.status(400).send("Authorization failed - no code");
-//   }
-  
-//   try {
-//     console.log("🔄 Processing Google OAuth callback...");
-    
-//     // Exchange code for tokens
-//     const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-//       method: "POST",
-//       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-//       body: new URLSearchParams({
-//         code,
-//         client_id: process.env.GOOGLE_CLIENT_ID,
-//         client_secret: process.env.GOOGLE_CLIENT_SECRET,
-//         redirect_uri: process.env.REDIRECT_URI,
-//         grant_type: "authorization_code"
-//       })
-//     });
-    
-//     const tokens = await tokenResponse.json();
-    
-//     if (!tokens.id_token) {
-//       throw new Error("No ID token received");
-//     }
-    
-//     // Decode JWT to get user info
-//     const userInfo = jwtDecode(tokens.id_token);
-//     console.log("👤 User info:", { 
-//       sub: userInfo.sub, 
-//       email: userInfo.email, 
-//       name: userInfo.name 
-//     });
-    
-//     let profile;
-//     let isNewUser = false;
-    
-//     // Check if user already exists
-//     const { data: existingProfile, error: fetchError } = await supabase
-//       .from("user_profiles")
-//       .select("*")
-//       .eq("google_id", userInfo.sub)
-//       .single();
-    
-//     if (existingProfile) {
-//       console.log("✅ Existing zkLogin user found - updating login time");
-      
-//       // Update existing user's last login
-//       const { data: updatedProfile, error: updateError } = await supabase
-//         .from("user_profiles")
-//         .update({ 
-//           updated_at: new Date().toISOString(),
-//           // Update name and picture in case they changed on Google
-//           name: userInfo.name,
-//           picture: userInfo.picture
-//         })
-//         .eq("id", existingProfile.id)
-//         .select()
-//         .single();
-        
-//       if (updateError) {
-//         console.error("❌ Profile update error:", updateError);
-//         throw new Error("Profile update failed");
-//       }
-      
-//       profile = updatedProfile;
-//       console.log(`🔐 Retrieved existing Sui address: ${profile.sui_address}`);
-      
-//     } else {
-//       console.log("🆕 New zkLogin user - creating profile");
-      
-//       // Generate Sui address using zkLogin for new users
-//       const userSalt = generateRandomness();
-//       const suiAddress = jwtToAddress(tokens.id_token, userSalt);
-      
-//       console.log("🔐 Generated new Sui address:", suiAddress);
-      
-//       // Create new user profile
-//       const profileData = {
-//         email: userInfo.email,
-//         google_id: userInfo.sub,
-//         name: userInfo.name,
-//         picture: userInfo.picture,
-//         user_salt: userSalt,
-//         sui_address: suiAddress,
-//         auth_method: "zklogin",
-//         created_at: new Date().toISOString(),
-//         updated_at: new Date().toISOString()
-//       };
-      
-//       const { data: insertedProfile, error: insertError } = await supabase
-//         .from("user_profiles")
-//         .insert([profileData])
-//         .select()
-//         .single();
-        
-//       if (insertError) {
-//         console.error("❌ Profile insert error:", insertError);
-//         throw new Error("Profile creation failed");
-//       }
-      
-//       profile = insertedProfile;
-//       isNewUser = true;
-//     }
-    
-//     const needsUsername = needsUsernameSetup(profile);
-    
-//     // Store session for Unity to poll
-//     sessions[state] = {
-//       id: userInfo.sub,
-//       email: userInfo.email,
-//       name: profile.name,
-//       picture: userInfo.picture,
-//       suiWallet: profile.sui_address,
-//       authMethod: "zklogin",
-//       profileId: profile.id,
-//       sub: userInfo.sub,
-//       aud: userInfo.aud,
-//       needsUsernameSetup: needsUsername
-//     };
-    
-//     // Fetch and display wallet balance in logs
-//     try {
-//       console.log(`💰 Checking Sui balance for zkLogin user...`);
-      
-//       const balance = await suiClient.getBalance({
-//         owner: profile.sui_address,
-//         coinType: '0x2::sui::SUI'
-//       });
-      
-//       const formattedBalance = (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4);
-//       console.log(`💰 Sui Balance: ${formattedBalance} SUI (${balance.totalBalance} MIST)`);
-      
-//       // Optional: Check for any owned objects
-//       const objects = await suiClient.getOwnedObjects({
-//         owner: profile.sui_address,
-//         limit: 5
-//       });
-      
-//       console.log(`📦 Owned Objects: ${objects.data.length} items`);
-      
-//     } catch (balanceError) {
-//       console.log(`⚠️ Could not fetch balance: ${balanceError.message} (This is normal for new addresses)`);
-//     }
-    
-//     console.log(`✅ zkLogin successful for ${userInfo.email} - ${isNewUser ? 'New user created' : 'Existing user logged in'}`);
-    
-//     // Return success page with appropriate message
-//     const welcomeMessage = isNewUser ? 
-//       `Welcome to the game, ${userInfo.name}!` : 
-//       `Welcome back, ${userInfo.name}!`;
-    
-//     res.send(`
-//       <html>
-//         <head>
-//           <title>Sign In Successful</title>
-//           <style>
-//             body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-//             .container { background: rgba(255,255,255,0.1); padding: 30px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
-//             .success { color: #4CAF50; font-size: 28px; margin-bottom: 20px; }
-//             .info { color: #f0f0f0; margin: 15px 0; font-size: 16px; }
-//             .wallet { background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; font-family: monospace; word-break: break-all; }
-//           </style>
-//         </head>
-//         <body>
-//           <div class="container">
-//             <div class="success">✅ Sign In Successful!</div>
-//             <div class="info">${welcomeMessage}</div>
-//             <div class="info">Your Sui Wallet:</div>
-//             <div class="wallet">${profile.sui_address}</div>
-//             <div class="info" style="margin-top: 20px;">You can now close this window and return to the game.</div>
-//           </div>
-//         </body>
-//       </html>
-//     `);
-    
-//   } catch (err) {
-//     console.error("❌ OAuth callback error:", err);
-//     res.status(500).send(`
-//       <html>
-//         <head>
-//           <title>Authentication Failed</title>
-//           <style>
-//             body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f44336; color: white; }
-//           </style>
-//         </head>
-//         <body>
-//           <h1>❌ Authentication Failed</h1>
-//           <p>Error: ${err.message}</p>
-//           <p>Please close this window and try again.</p>
-//         </body>
-//       </html>
-//     `);
-//   }
-// });
-
-// // Unity polling endpoint
-// app.get("/getProfile", (req, res) => {
-//   const { state } = req.query;
-//   if (sessions[state]) {
-//     res.json(sessions[state]);
-//     delete sessions[state];
-//   } else {
-//     res.status(404).send("Not ready");
-//   }
-// });
-
-// // Enhanced health check with network info
-// app.get("/ping", async (req, res) => {
-//   try {
-//     const networkInfo = await getNetworkInfo();
-//     res.json({
-//       status: "ok",
-//       timestamp: new Date().toISOString(),
-//       message: "Server is running",
-//       network: networkInfo
-//     });
-//   } catch (err) {
-//     res.json({
-//       status: "ok",
-//       timestamp: new Date().toISOString(),
-//       message: "Server is running",
-//       networkError: err.message
-//     });
-//   }
-// });
-
-// // Test endpoint with your specific address
-// app.get("/test-validation", async (req, res) => {
-//   const testAddress = "0x59435d7c7acd3a3d17c8701d9384b25fdafd7669307dea06a8a70c8bd3fb52d0";
-  
-//   try {
-//     const isValid = isValidSuiAddress(testAddress);
-//     let blockchainInfo = null;
-    
-//     if (isValid) {
-//       try {
-//         const balance = await suiClient.getBalance({
-//           owner: testAddress,
-//           coinType: '0x2::sui::SUI'
-//         });
-        
-//         blockchainInfo = {
-//           balance: balance.totalBalance,
-//           formatted: (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4) + ' SUI',
-//           network: NETWORK_CONFIG.current
-//         };
-//       } catch (err) {
-//         blockchainInfo = { error: err.message };
-//       }
-//     }
-    
-//     res.json({
-//       testAddress,
-//       formatValid: isValid,
-//       blockchain: blockchainInfo,
-//       network: NETWORK_CONFIG.current,
-//       message: `Test validation: ${isValid ? 'PASSED' : 'FAILED'}`,
-//       serverTime: new Date().toISOString()
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       error: "Test validation failed",
-//       message: err.message
-//     });
-//   }
-// });
-
-// app.listen(PORT, () => {
-//   console.log(`🚀 Server running on port ${PORT}`);
-//   console.log(`🌐 Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()}`);
-//   console.log(`🔗 RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
-// });
