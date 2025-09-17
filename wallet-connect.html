@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sui Wallet Connect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #333;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 420px;
+            width: 100%;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 1.8rem;
+        }
+
+        .wallet-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .wallet-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: white;
+            border: 2px solid #e1e8ed;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wallet-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+            border-color: #667eea;
+        }
+
+        .wallet-item.detected {
+            border-color: #10b981;
+            background: linear-gradient(to right, rgba(16, 185, 129, 0.05), transparent);
+        }
+
+        .wallet-item.detected::after {
+            content: 'Installed';
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            background: #10b981;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .wallet-icon {
+            width: 40px;
+            height: 40px;
+            margin-right: 1rem;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .wallet-info {
+            flex: 1;
+        }
+
+        .wallet-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+
+        .wallet-status {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .divider {
+            margin: 1.5rem 0;
+            border-bottom: 1px solid #e1e8ed;
+            position: relative;
+        }
+
+        .divider span {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 0 1rem;
+            color: #999;
+            font-size: 0.85rem;
+        }
+
+        .manual-input {
+            margin-top: 1.5rem;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            color: #c00;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .detecting {
+            text-align: center;
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .detecting .loading {
+            border-color: rgba(102, 126, 234, 0.3);
+            border-top-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Connect Your Wallet</h1>
+        
+        <div class="detecting" id="detectingWallets">
+            <span class="loading"></span>
+            Detecting installed wallets...
+        </div>
+
+        <div class="wallet-list" id="walletList">
+            <!-- Wallets will be populated here -->
+        </div>
+
+        <div class="divider">
+            <span>OR</span>
+        </div>
+
+        <div class="manual-input">
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    id="manualAddress" 
+                    placeholder="Enter Sui wallet address (0x...)"
+                    autocomplete="off"
+                >
+                <button onclick="connectManualWallet()">Connect</button>
+            </div>
+        </div>
+
+        <div id="statusMessage"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const SERVER_URL = 'http://localhost:3000'; // Update with your server URL
+        const STATE = generateRandomState();
+        
+        // Supported wallets configuration
+        const SUPPORTED_WALLETS = {
+            'Sui Wallet': {
+                key: 'suiWallet',
+                icon: '🔷',
+                color: '#4DA2FF',
+                checkMethod: () => window.suiWallet,
+                connect: connectSuiWallet
+            },
+            'Suiet': {
+                key: 'suiet',
+                icon: '🟣',
+                color: '#9333EA',
+                checkMethod: () => window.suiet,
+                connect: connectSuiet
+            },
+            'Ethos': {
+                key: 'ethos',
+                icon: '🟢',
+                color: '#10B981',
+                checkMethod: () => window.ethos,
+                connect: connectEthos
+            },
+            'Martian': {
+                key: 'martian',
+                icon: '🔴',
+                color: '#EF4444',
+                checkMethod: () => window.martian?.sui,
+                connect: connectMartian
+            },
+            'Nightly': {
+                key: 'nightly',
+                icon: '🌙',
+                color: '#1E293B',
+                checkMethod: () => window.nightly?.sui,
+                connect: connectNightly
+            },
+            'OKX Wallet': {
+                key: 'okxwallet',
+                icon: '⚫',
+                color: '#000000',
+                checkMethod: () => window.okxwallet?.sui,
+                connect: connectOKXWallet
+            }
+        };
+
+        let detectedWallets = new Set();
+        let isConnecting = false;
+
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            detectWallets();
+            // Re-check periodically as some wallets inject late
+            setTimeout(detectWallets, 1000);
+            setTimeout(detectWallets, 2000);
+        });
+
+        function generateRandomState() {
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
+
+        function detectWallets() {
+            const walletList = document.getElementById('walletList');
+            const detectingMessage = document.getElementById('detectingWallets');
+            
+            walletList.innerHTML = '';
+            detectedWallets.clear();
+
+            Object.entries(SUPPORTED_WALLETS).forEach(([name, config]) => {
+                const isInstalled = config.checkMethod();
+                if (isInstalled) {
+                    detectedWallets.add(name);
+                }
+
+                const walletItem = document.createElement('div');
+                walletItem.className = `wallet-item ${isInstalled ? 'detected' : ''}`;
+                walletItem.onclick = () => handleWalletClick(name, config, isInstalled);
+
+                walletItem.innerHTML = `
+                    <div class="wallet-icon" style="background: ${config.color}20; color: ${config.color};">
+                        ${config.icon}
+                    </div>
+                    <div class="wallet-info">
+                        <div class="wallet-name">${name}</div>
+                        <div class="wallet-status">
+                            ${isInstalled ? 'Click to connect' : 'Not installed'}
+                        </div>
+                    </div>
+                `;
+
+                walletList.appendChild(walletItem);
+            });
+
+            detectingMessage.style.display = 'none';
+
+            if (detectedWallets.size === 0) {
+                showMessage('No wallets detected. Install a Sui wallet extension or enter address manually.', 'error');
+            }
+        }
+
+        function handleWalletClick(name, config, isInstalled) {
+            if (!isInstalled) {
+                showMessage(`${name} is not installed. Please install it first or use another wallet.`, 'error');
+                return;
+            }
+
+            if (!isConnecting) {
+                config.connect(name);
+            }
+        }
+
+        // Individual wallet connection functions
+        async function connectSuiWallet(walletName) {
+            if (isConnecting) return;
+            isConnecting = true;
+            showMessage('Connecting to Sui Wallet...', 'info');
+
+            try {
+                const result = await window.suiWallet.requestPermissions();
+                if (result) {
+                    const accounts = await window.suiWallet.getAccounts();
+                    if (accounts && accounts.length > 0) {
+                        await sendWalletToServer(accounts[0], walletName);
+                    }
+                }
+            } catch (error) {
+                showMessage(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        async function connectSuiet(walletName) {
+            if (isConnecting) return;
+            isConnecting = true;
+            showMessage('Connecting to Suiet...', 'info');
+
+            try {
+                const result = await window.suiet.connect();
+                if (result && result.address) {
+                    await sendWalletToServer(result.address, walletName);
+                }
+            } catch (error) {
+                showMessage(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        async function connectEthos(walletName) {
+            if (isConnecting) return;
+            isConnecting = true;
+            showMessage('Connecting to Ethos...', 'info');
+
+            try {
+                const result = await window.ethos.requestAccounts();
+                if (result && result.length > 0) {
+                    await sendWalletToServer(result[0], walletName);
+                }
+            } catch (error) {
+                showMessage(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        async function connectMartian(walletName) {
+            if (isConnecting) return;
+            isConnecting = true;
+            showMessage('Connecting to Martian...', 'info');
+
+            try {
+                const result = await window.martian.sui.connect();
+                if (result && result.address) {
+                    await sendWalletToServer(result.address, walletName);
+                }
+            } catch (error) {
+                showMessage(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        async function connectNightly(walletName) {
+            if (isConnecting) return;
+            isConnecting = true;
+            showMessage('Connecting to Nightly...', 'info');
+
+            try {
+                const result = await window.nightly.sui.connect();
+                if (result && result.publicKey) {
+                    await sendWalletToServer(result.publicKey, walletName);
+                }
+            } catch (error) {
+                showMessage(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        async function connectOKXWallet(walletName) {
+            if (isConnecting) return;
+            isConnecting = true;
+            showMessage('Connecting to OKX Wallet...', 'info');
+
+            try {
+                const result = await window.okxwallet.sui.connect();
+                if (result && result.address) {
+                    await sendWalletToServer(result.address, walletName);
+                }
+            } catch (error) {
+                showMessage(`Connection failed: ${error.message}`, 'error');
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        async function connectManualWallet() {
+            const addressInput = document.getElementById('manualAddress');
+            const address = addressInput.value.trim();
+
+            if (!address) {
+                showMessage('Please enter a wallet address', 'error');
+                return;
+            }
+
+            if (!address.startsWith('0x') || address.length < 42) {
+                showMessage('Invalid Sui address format', 'error');
+                return;
+            }
+
+            await sendWalletToServer(address, 'manual');
+        }
+
+        async function sendWalletToServer(walletAddress, walletName) {
+            showMessage('Verifying wallet...', 'info');
+
+            try {
+                const response = await fetch(`${SERVER_URL}/auth/browser-wallet`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        walletAddress,
+                        walletName,
+                        state: STATE,
+                        signature: null, // You can add signature verification later
+                        message: null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage(`Successfully connected! Wallet: ${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`, 'success');
+                    
+                    // If Unity is polling, it will pick up the session using the state
+                    // You can also redirect or close window here if needed
+                    if (data.needsUsernameSetup) {
+                        setTimeout(() => {
+                            window.location.href = `/setup-username?wallet=${walletAddress}`;
+                        }, 2000);
+                    }
+                } else {
+                    showMessage(data.error || 'Connection failed', 'error');
+                }
+            } catch (error) {
+                showMessage(`Server connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        function showMessage(message, type) {
+            const statusDiv = document.getElementById('statusMessage');
+            statusDiv.className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            statusDiv.textContent = message;
+            
+            if (type === 'info') {
+                statusDiv.innerHTML = `<span class="loading"></span>${message}`;
+            }
+
+            if (type === 'success' || type === 'error') {
+                setTimeout(() => {
+                    statusDiv.textContent = '';
+                    statusDiv.className = '';
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>
