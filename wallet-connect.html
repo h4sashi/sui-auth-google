@@ -216,6 +216,59 @@
             border-top-color: #667eea;
         }
     </style>
+
+    <!-- Add to your HTML head -->
+<script src="https://unpkg.com/@mysten/wallet-kit"></script>
+
+<script>
+// Wallet Kit integration
+async function initWalletKit() {
+    try {
+        const { getWallets } = await import('https://unpkg.com/@mysten/wallet-kit');
+        const wallets = getWallets();
+        
+        wallets.forEach(wallet => {
+            if (wallet.installed) {
+                // Add to your wallet list UI
+                addWalletToUI(wallet);
+            }
+        });
+    } catch (error) {
+        console.error('Error initializing Wallet Kit:', error);
+    }
+}
+
+function addWalletToUI(wallet) {
+    const walletItem = document.createElement('div');
+    walletItem.className = 'wallet-item detected';
+    walletItem.onclick = () => connectWithWalletKit(wallet);
+    
+    walletItem.innerHTML = `
+        <div class="wallet-icon">
+            <img src="${wallet.icon}" alt="${wallet.name}" width="24" height="24">
+        </div>
+        <div class="wallet-info">
+            <div class="wallet-name">${wallet.name}</div>
+            <div class="wallet-status">Click to connect</div>
+        </div>
+    `;
+    
+    document.getElementById('walletList').appendChild(walletItem);
+}
+
+async function connectWithWalletKit(wallet) {
+    try {
+        await wallet.connect();
+        const accounts = await wallet.getAccounts();
+        
+        if (accounts.length > 0) {
+            await sendWalletToServer(accounts[0].address, wallet.name);
+        }
+    } catch (error) {
+        showMessage(`Connection failed: ${error.message}`, 'error');
+    }
+}
+</script>
 </head>
 <body>
     <div class="container">

@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
     "@mysten/sui": "^1.38.0",
     "@mysten/sui.js": "^0.54.1",
@@ -22,5 +22,15 @@
     "googleapis": "^159.0.0",
     "jsonwebtoken": "^9.0.2",
     "jwt-decode": "^4.0.0"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/h4sashi/sui-auth-google.git"
+  },
+  "bugs": {
+    "url": "https://github.com/h4sashi/sui-auth-google/issues"
+  },
+  "homepage": "https://github.com/h4sashi/sui-auth-google#readme",
+  "description": ""
 }
