@@ -1,10 +1,12 @@
 {
   "name": "zklogin-backend",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "keywords": [],
   "author": "",
@@ -12,8 +14,15 @@
   "dependencies": {
     "@mysten/sui": "^1.38.0",
     "@mysten/sui.js": "^0.54.1",
+    "@mysten/wallet-adapter-base": "^0.9.0",
+    "@mysten/wallet-adapter-sui-wallet": "^0.3.0",
+    "@mysten/wallet-adapter-unsafe-burner": "^0.10.0",
+    "@mysten/wallet-standard": "^0.17.0",
     "@mysten/zklogin": "^0.8.1",
     "@supabase/supabase-js": "^2.57.4",
+    "@wallet-standard/core": "^1.1.1",
+    "@wallet-standard/features": "^1.1.0",
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "ejs": "^3.1.10",
@@ -21,9 +30,9 @@
     "google-auth-library": "^10.3.0",
     "googleapis": "^159.0.0",
     "jsonwebtoken": "^9.0.2",
-    "jwt-decode": "^4.0.0"
+    "jwt-decode": "^4.0.0",
+    "node-fetch": "^3.3.2"
   },
-  "devDependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/h4sashi/sui-auth-google.git"
