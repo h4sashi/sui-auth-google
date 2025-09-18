@@ -1,3 +1,4 @@
+// types/user.ts
 export interface UserProfile {
   id: string
   email?: string

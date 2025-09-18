@@ -1,3 +1,4 @@
+// src/lib/supabase.ts git add . && git commit -m "Sobriety" && git push origin main
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!

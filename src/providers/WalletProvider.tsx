@@ -1,3 +1,4 @@
+// src/providers/WalletProvider.tsx
 'use client'
 
 import { WalletProvider } from '@suiet/wallet-kit'

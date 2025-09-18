@@ -1,3 +1,4 @@
+//src/app/api/wallet-connect/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase'
 import { isValidSuiAddress } from '@mysten/sui.js/utils'
