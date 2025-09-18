@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html>
 <head>
     <title>Connect Your Sui Wallet</title>
@@ -187,7 +187,7 @@
         <div id="status" class="status info" style="display: none;">Ready to connect</div>
         
         <!-- Browser Extension Wallet Connection -->
-        <div class="wallet-section">
+        <!-- <div class="wallet-section">
             <h3>🚀 Recommended: Use Wallet Extensions</h3>
             <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
                 Connect with any installed Sui wallet extension
@@ -209,8 +209,8 @@
         <div class="wallet-section">
             <h3>📝 Manual Connection</h3>
             <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
-                Enter your Sui wallet address directly
-            </p>
+                Enter your Sui wallet address directly -->
+            <!-- </p>
             <input type="text" 
                    class="manual-input" 
                    id="manual-address" 
@@ -282,496 +282,496 @@
                 windowProperty: ['ethos', 'ethosWallet'],
                 connectMethod: 'connect'
             }
-        ];
+        ]; -->
         
         // Check if extension is installed by trying to access its web accessible resources
-        async function checkExtensionInstalled(extensionId) {
-            return new Promise((resolve) => {
-                // Method 1: Try to fetch a web accessible resource
-                const img = new Image();
-                img.onload = () => resolve(true);
-                img.onerror = () => {
-                    // Method 2: Try to access extension URL
-                    fetch(`chrome-extension://${extensionId}/manifest.json`)
-                        .then(() => resolve(true))
-                        .catch(() => resolve(false));
-                };
-                // Many extensions have an icon as web accessible resource
-                img.src = `chrome-extension://${extensionId}/icon.png`;
+        // async function checkExtensionInstalled(extensionId) {
+        //     return new Promise((resolve) => {
+        //         // Method 1: Try to fetch a web accessible resource
+        //         const img = new Image();
+        //         img.onload = () => resolve(true);
+        //         img.onerror = () => {
+        //             // Method 2: Try to access extension URL
+        //             fetch(`chrome-extension://${extensionId}/manifest.json`)
+        //                 .then(() => resolve(true))
+        //                 .catch(() => resolve(false));
+        //         };
+        //         // Many extensions have an icon as web accessible resource
+        //         img.src = `chrome-extension://${extensionId}/icon.png`;
                 
-                // Timeout after 1 second
-                setTimeout(() => resolve(false), 1000);
-            });
-        }
+        //         // Timeout after 1 second
+        //         setTimeout(() => resolve(false), 1000);
+        //     });
+        // }
         
         // Check if extension injects into window
-        function checkWindowProperty(wallet) {
-            for (const prop of wallet.windowProperty) {
-                if (window[prop] && typeof window[prop] === 'object') {
-                    console.log(`✅ Found ${wallet.displayName} via window.${prop}`);
-                    return window[prop];
-                }
-            }
-            return null;
-        }
+        // function checkWindowProperty(wallet) {
+        //     for (const prop of wallet.windowProperty) {
+        //         if (window[prop] && typeof window[prop] === 'object') {
+        //             console.log(`✅ Found ${wallet.displayName} via window.${prop}`);
+        //             return window[prop];
+        //         }
+        //     }
+        //     return null;
+        // } -->
         
         // Enhanced wallet detection using both extension ID and window injection
-        async function detectWallets() {
-            console.log('🔍 ENHANCED WALLET DETECTION STARTING...');
-            console.log('==========================================');
+        // async function detectWallets() {
+        //     console.log('🔍 ENHANCED WALLET DETECTION STARTING...');
+        //     console.log('==========================================');
             
-            detectedWallets = [];
-            const container = document.getElementById('detected-wallets');
-            container.innerHTML = '<div class="wallet-status">Detecting wallets...</div>';
+        //     detectedWallets = [];
+        //     const container = document.getElementById('detected-wallets');
+        //     container.innerHTML = '<div class="wallet-status">Detecting wallets...</div>';
             
-            console.log(`📋 Checking ${WALLET_EXTENSIONS.length} known wallet extensions...`);
+        //     console.log(`📋 Checking ${WALLET_EXTENSIONS.length} known wallet extensions...`);
             
-            for (const wallet of WALLET_EXTENSIONS) {
-                console.log(`\n🧪 Checking ${wallet.displayName} (${wallet.id})...`);
+        //     for (const wallet of WALLET_EXTENSIONS) {
+        //         console.log(`\n🧪 Checking ${wallet.displayName} (${wallet.id})...`);
                 
-                // Check both extension presence and window injection
-                const isExtensionInstalled = await checkExtensionInstalled(wallet.id);
-                const windowObject = checkWindowProperty(wallet);
+        //         // Check both extension presence and window injection
+        //         const isExtensionInstalled = await checkExtensionInstalled(wallet.id);
+        //         const windowObject = checkWindowProperty(wallet);
                 
-                console.log(`   - Extension installed: ${isExtensionInstalled}`);
-                console.log(`   - Window injection: ${!!windowObject}`);
+        //         console.log(`   - Extension installed: ${isExtensionInstalled}`);
+        //         console.log(`   - Window injection: ${!!windowObject}`);
                 
-                if (windowObject) {
-                    // Extension is installed AND injected - ready to use
-                    console.log(`   ✅ ${wallet.displayName} READY TO CONNECT`);
-                    detectedWallets.push({
-                        ...wallet,
-                        instance: windowObject,
-                        detectionMethod: 'window-injection',
-                        status: 'ready'
-                    });
-                } else if (isExtensionInstalled) {
-                    // Extension is installed but not injected yet
-                    console.log(`   ⏳ ${wallet.displayName} INSTALLED BUT WAITING FOR INJECTION`);
-                    detectedWallets.push({
-                        ...wallet,
-                        instance: null,
-                        detectionMethod: 'extension-only',
-                        status: 'waiting'
-                    });
-                } else {
-                    console.log(`   ❌ ${wallet.displayName} NOT FOUND`);
-                }
-            }
+        //         if (windowObject) {
+        //             // Extension is installed AND injected - ready to use
+        //             console.log(`   ✅ ${wallet.displayName} READY TO CONNECT`);
+        //             detectedWallets.push({
+        //                 ...wallet,
+        //                 instance: windowObject,
+        //                 detectionMethod: 'window-injection',
+        //                 status: 'ready'
+        //             });
+        //         } else if (isExtensionInstalled) {
+        //             // Extension is installed but not injected yet
+        //             console.log(`   ⏳ ${wallet.displayName} INSTALLED BUT WAITING FOR INJECTION`);
+        //             detectedWallets.push({
+        //                 ...wallet,
+        //                 instance: null,
+        //                 detectionMethod: 'extension-only',
+        //                 status: 'waiting'
+        //             });
+        //         } else {
+        //             console.log(`   ❌ ${wallet.displayName} NOT FOUND`);
+        //         }
+        //     }
             
-            // Also scan for any unrecognized wallets in window
-            console.log('\n🔍 Scanning for unrecognized wallets...');
-            const knownProps = WALLET_EXTENSIONS.map(w => w.windowProperty).flat();
-            const allWindowKeys = Object.keys(window);
+        //     // Also scan for any unrecognized wallets in window
+        //     console.log('\n🔍 Scanning for unrecognized wallets...');
+        //     const knownProps = WALLET_EXTENSIONS.map(w => w.windowProperty).flat();
+        //     const allWindowKeys = Object.keys(window);
             
-            allWindowKeys.forEach(key => {
-                if (knownProps.includes(key)) return; // Already checked
+        //     allWindowKeys.forEach(key => {
+        //         if (knownProps.includes(key)) return; // Already checked
                 
-                try {
-                    const obj = window[key];
-                    if (obj && typeof obj === 'object') {
-                        const hasSuiMethods = typeof obj.connect === 'function' || 
-                                            typeof obj.getAccounts === 'function' ||
-                                            typeof obj.signAndExecuteTransactionBlock === 'function';
+        //         try {
+        //             const obj = window[key];
+        //             if (obj && typeof obj === 'object') {
+        //                 const hasSuiMethods = typeof obj.connect === 'function' || 
+        //                                     typeof obj.getAccounts === 'function' ||
+        //                                     typeof obj.signAndExecuteTransactionBlock === 'function';
                         
-                        if (hasSuiMethods) {
-                            console.log(`🆕 Found unrecognized Sui wallet: window.${key}`);
-                            detectedWallets.push({
-                                name: key,
-                                id: 'unknown',
-                                key: key,
-                                displayName: `${key} (Unrecognized)`,
-                                windowProperty: [key],
-                                instance: obj,
-                                detectionMethod: 'window-scan',
-                                status: 'ready'
-                            });
-                        }
-                    }
-                } catch (e) {
-                    // Ignore errors
-                }
-            });
+        //                 if (hasSuiMethods) {
+        //                     console.log(`🆕 Found unrecognized Sui wallet: window.${key}`);
+        //                     detectedWallets.push({
+        //                         name: key,
+        //                         id: 'unknown',
+        //                         key: key,
+        //                         displayName: `${key} (Unrecognized)`,
+        //                         windowProperty: [key],
+        //                         instance: obj,
+        //                         detectionMethod: 'window-scan',
+        //                         status: 'ready'
+        //                     });
+        //                 }
+        //             }
+        //         } catch (e) {
+        //             // Ignore errors
+        //         }
+        //     });
             
-            console.log('\n🎯 DETECTION RESULTS:');
-            console.log(`   - Total wallets detected: ${detectedWallets.length}`);
-            console.log(`   - Ready to connect: ${detectedWallets.filter(w => w.status === 'ready').length}`);
-            console.log(`   - Waiting for injection: ${detectedWallets.filter(w => w.status === 'waiting').length}`);
+        //     console.log('\n🎯 DETECTION RESULTS:');
+        //     console.log(`   - Total wallets detected: ${detectedWallets.length}`);
+        //     console.log(`   - Ready to connect: ${detectedWallets.filter(w => w.status === 'ready').length}`);
+        //     console.log(`   - Waiting for injection: ${detectedWallets.filter(w => w.status === 'waiting').length}`);
             
-            detectedWallets.forEach((wallet, index) => {
-                console.log(`   ${index + 1}. ${wallet.displayName} - ${wallet.status} (${wallet.detectionMethod})`);
-            });
-            console.log('==========================================');
+        //     detectedWallets.forEach((wallet, index) => {
+        //         console.log(`   ${index + 1}. ${wallet.displayName} - ${wallet.status} (${wallet.detectionMethod})`);
+        //     });
+        //     console.log('==========================================');
             
-            displayDetectedWallets();
-            return detectedWallets.length > 0;
-        }
+        //     displayDetectedWallets();
+        //     return detectedWallets.length > 0;
+        // }
         
-        // Display detected wallets with enhanced status information
-        function displayDetectedWallets() {
-            const container = document.getElementById('detected-wallets');
-            container.innerHTML = '';
+        // // Display detected wallets with enhanced status information
+        // function displayDetectedWallets() {
+        //     const container = document.getElementById('detected-wallets');
+        //     container.innerHTML = '';
             
-            if (detectedWallets.length === 0) {
-                container.innerHTML = '<div class="wallet-status">No wallet extensions detected. Please install a Sui wallet extension first.</div>';
-                return;
-            }
+        //     if (detectedWallets.length === 0) {
+        //         container.innerHTML = '<div class="wallet-status">No wallet extensions detected. Please install a Sui wallet extension first.</div>';
+        //         return;
+        //     }
             
-            detectedWallets.forEach(wallet => {
-                const walletEl = document.createElement('div');
+        //     detectedWallets.forEach(wallet => {
+        //         const walletEl = document.createElement('div');
                 
-                if (wallet.status === 'ready') {
-                    walletEl.className = 'wallet-option detected';
-                    walletEl.innerHTML = `
-                        <div>
-                            <div class="wallet-name">${wallet.displayName}</div>
-                            <div class="wallet-status">Ready to Connect</div>
-                        </div>
-                        <div style="color: #28a745;">✓</div>
-                    `;
-                    walletEl.onclick = () => connectSpecificWallet(wallet);
-                } else if (wallet.status === 'waiting') {
-                    walletEl.className = 'wallet-option';
-                    walletEl.style.borderColor = '#ffc107';
-                    walletEl.style.backgroundColor = '#fff9e6';
-                    walletEl.innerHTML = `
-                        <div>
-                            <div class="wallet-name">${wallet.displayName}</div>
-                            <div class="wallet-status">Installed but waiting for injection...</div>
-                        </div>
-                        <div style="color: #ffc107;">⏳</div>
-                    `;
-                    walletEl.onclick = () => {
-                        updateStatus(`${wallet.displayName} is installed but not ready yet. Try refreshing the page or opening the wallet extension first.`, 'info');
-                    };
-                } else {
-                    walletEl.className = 'wallet-option';
-                    walletEl.innerHTML = `
-                        <div>
-                            <div class="wallet-name">${wallet.displayName}</div>
-                            <div class="wallet-status">Not Available</div>
-                        </div>
-                        <div style="color: #dc3545;">✗</div>
-                    `;
-                }
+        //         if (wallet.status === 'ready') {
+        //             walletEl.className = 'wallet-option detected';
+        //             walletEl.innerHTML = `
+        //                 <div>
+        //                     <div class="wallet-name">${wallet.displayName}</div>
+        //                     <div class="wallet-status">Ready to Connect</div>
+        //                 </div>
+        //                 <div style="color: #28a745;">✓</div>
+        //             `;
+        //             walletEl.onclick = () => connectSpecificWallet(wallet);
+        //         } else if (wallet.status === 'waiting') {
+        //             walletEl.className = 'wallet-option';
+        //             walletEl.style.borderColor = '#ffc107';
+        //             walletEl.style.backgroundColor = '#fff9e6';
+        //             walletEl.innerHTML = `
+        //                 <div>
+        //                     <div class="wallet-name">${wallet.displayName}</div>
+        //                     <div class="wallet-status">Installed but waiting for injection...</div>
+        //                 </div>
+        //                 <div style="color: #ffc107;">⏳</div>
+        //             `;
+        //             walletEl.onclick = () => {
+        //                 updateStatus(`${wallet.displayName} is installed but not ready yet. Try refreshing the page or opening the wallet extension first.`, 'info');
+        //             };
+        //         } else {
+        //             walletEl.className = 'wallet-option';
+        //             walletEl.innerHTML = `
+        //                 <div>
+        //                     <div class="wallet-name">${wallet.displayName}</div>
+        //                     <div class="wallet-status">Not Available</div>
+        //                 </div>
+        //                 <div style="color: #dc3545;">✗</div>
+        //             `;
+        //         }
                 
-                container.appendChild(walletEl);
-            });
-        }
+        //         container.appendChild(walletEl);
+        //     });
+        // }
         
-        // Enhanced wallet detection and connection with retry logic
-        async function detectAndConnectWallet() {
-            console.log('🔗 Starting enhanced wallet detection and connection...');
-            showLoading(true);
+        // // Enhanced wallet detection and connection with retry logic
+        // async function detectAndConnectWallet() {
+        //     console.log('🔗 Starting enhanced wallet detection and connection...');
+        //     showLoading(true);
             
-            try {
-                updateStatus('Detecting wallet extensions...', 'info');
+        //     try {
+        //         updateStatus('Detecting wallet extensions...', 'info');
                 
-                const hasWallets = await detectWallets();
-                if (!hasWallets) {
-                    throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
-                }
+        //         const hasWallets = await detectWallets();
+        //         if (!hasWallets) {
+        //             throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
+        //         }
                 
-                // Try to connect to the first ready wallet
-                const readyWallet = detectedWallets.find(w => w.status === 'ready');
-                if (readyWallet) {
-                    await connectSpecificWallet(readyWallet);
-                } else {
-                    // Check if there are wallets waiting for injection
-                    const waitingWallets = detectedWallets.filter(w => w.status === 'waiting');
-                    if (waitingWallets.length > 0) {
-                        updateStatus(`Found ${waitingWallets.length} installed wallet(s) but they need more time to load. Trying again...`, 'info');
+        //         // Try to connect to the first ready wallet
+        //         const readyWallet = detectedWallets.find(w => w.status === 'ready');
+        //         if (readyWallet) {
+        //             await connectSpecificWallet(readyWallet);
+        //         } else {
+        //             // Check if there are wallets waiting for injection
+        //             const waitingWallets = detectedWallets.filter(w => w.status === 'waiting');
+        //             if (waitingWallets.length > 0) {
+        //                 updateStatus(`Found ${waitingWallets.length} installed wallet(s) but they need more time to load. Trying again...`, 'info');
                         
-                        // Wait a bit and try again
-                        setTimeout(async () => {
-                            await detectWallets();
-                            const nowReadyWallet = detectedWallets.find(w => w.status === 'ready');
-                            if (nowReadyWallet) {
-                                await connectSpecificWallet(nowReadyWallet);
-                            } else {
-                                showLoading(false);
-                                updateStatus('Wallets are installed but not ready. Please try refreshing the page or opening a wallet extension first.', 'info');
-                            }
-                        }, 3000);
-                    } else {
-                        throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
-                    }
-                }
+        //                 // Wait a bit and try again
+        //                 setTimeout(async () => {
+        //                     await detectWallets();
+        //                     const nowReadyWallet = detectedWallets.find(w => w.status === 'ready');
+        //                     if (nowReadyWallet) {
+        //                         await connectSpecificWallet(nowReadyWallet);
+        //                     } else {
+        //                         showLoading(false);
+        //                         updateStatus('Wallets are installed but not ready. Please try refreshing the page or opening a wallet extension first.', 'info');
+        //                     }
+        //                 }, 3000);
+        //             } else {
+        //                 throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
+        //             }
+        //         }
                 
-            } catch (error) {
-                console.error('❌ Wallet detection/connection failed:', error);
-                updateStatus('Connection failed: ' + error.message, 'error');
-                showLoading(false);
-            }
-        }
+        //     } catch (error) {
+        //         console.error('❌ Wallet detection/connection failed:', error);
+        //         updateStatus('Connection failed: ' + error.message, 'error');
+        //         showLoading(false);
+        //     }
+        // }
         
-        // Connect to a specific wallet with enhanced connection methods
-        async function connectSpecificWallet(walletInfo) {
-            console.log(`🔗 Connecting to ${walletInfo.displayName}...`);
+        // // Connect to a specific wallet with enhanced connection methods
+        // async function connectSpecificWallet(walletInfo) {
+        //     console.log(`🔗 Connecting to ${walletInfo.displayName}...`);
             
-            try {
-                updateStatus(`Connecting to ${walletInfo.displayName}...`, 'info');
+        //     try {
+        //         updateStatus(`Connecting to ${walletInfo.displayName}...`, 'info');
                 
-                // Use the detected wallet instance
-                const wallet = walletInfo.instance || window[walletInfo.key];
+        //         // Use the detected wallet instance
+        //         const wallet = walletInfo.instance || window[walletInfo.key];
                 
-                if (!wallet) {
-                    throw new Error(`${walletInfo.displayName} not found`);
-                }
+        //         if (!wallet) {
+        //             throw new Error(`${walletInfo.displayName} not found`);
+        //         }
                 
-                console.log(`📋 Available methods for ${walletInfo.displayName}:`, Object.keys(wallet));
+        //         console.log(`📋 Available methods for ${walletInfo.displayName}:`, Object.keys(wallet));
                 
-                let account;
-                let result;
+        //         let account;
+        //         let result;
                 
-                // Try different connection methods based on wallet type
-                if (typeof wallet.connect === 'function') {
-                    console.log(`🔌 Using connect() method for ${walletInfo.displayName}`);
-                    result = await wallet.connect();
-                    console.log('Connect result:', result);
+        //         // Try different connection methods based on wallet type
+        //         if (typeof wallet.connect === 'function') {
+        //             console.log(`🔌 Using connect() method for ${walletInfo.displayName}`);
+        //             result = await wallet.connect();
+        //             console.log('Connect result:', result);
                     
-                    // Handle different response formats
-                    if (result && result.accounts && result.accounts.length > 0) {
-                        account = result.accounts[0];
-                    } else if (result && result.account) {
-                        account = result.account;
-                    } else if (result && result.address) {
-                        account = result;
-                    } else {
-                        // Try to get accounts after connection
-                        if (typeof wallet.getAccounts === 'function') {
-                            const accounts = await wallet.getAccounts();
-                            account = accounts && accounts.length > 0 ? accounts[0] : null;
-                        }
-                    }
-                } else if (typeof wallet.requestPermissions === 'function') {
-                    console.log(`🔐 Using requestPermissions() method for ${walletInfo.displayName}`);
-                    await wallet.requestPermissions();
+        //             // Handle different response formats
+        //             if (result && result.accounts && result.accounts.length > 0) {
+        //                 account = result.accounts[0];
+        //             } else if (result && result.account) {
+        //                 account = result.account;
+        //             } else if (result && result.address) {
+        //                 account = result;
+        //             } else {
+        //                 // Try to get accounts after connection
+        //                 if (typeof wallet.getAccounts === 'function') {
+        //                     const accounts = await wallet.getAccounts();
+        //                     account = accounts && accounts.length > 0 ? accounts[0] : null;
+        //                 }
+        //             }
+        //         } else if (typeof wallet.requestPermissions === 'function') {
+        //             console.log(`🔐 Using requestPermissions() method for ${walletInfo.displayName}`);
+        //             await wallet.requestPermissions();
                     
-                    if (typeof wallet.getAccounts === 'function') {
-                        const accounts = await wallet.getAccounts();
-                        account = accounts && accounts.length > 0 ? accounts[0] : null;
-                    }
-                } else if (typeof wallet.enable === 'function') {
-                    console.log(`⚡ Using enable() method for ${walletInfo.displayName}`);
-                    result = await wallet.enable();
-                    console.log('Enable result:', result);
+        //             if (typeof wallet.getAccounts === 'function') {
+        //                 const accounts = await wallet.getAccounts();
+        //                 account = accounts && accounts.length > 0 ? accounts[0] : null;
+        //             }
+        //         } else if (typeof wallet.enable === 'function') {
+        //             console.log(`⚡ Using enable() method for ${walletInfo.displayName}`);
+        //             result = await wallet.enable();
+        //             console.log('Enable result:', result);
                     
-                    if (result && result.accounts && result.accounts.length > 0) {
-                        account = result.accounts[0];
-                    } else if (typeof wallet.getAccounts === 'function') {
-                        const accounts = await wallet.getAccounts();
-                        account = accounts && accounts.length > 0 ? accounts[0] : null;
-                    }
-                } else {
-                    throw new Error(`${walletInfo.displayName} does not support any known connection method`);
-                }
+        //             if (result && result.accounts && result.accounts.length > 0) {
+        //                 account = result.accounts[0];
+        //             } else if (typeof wallet.getAccounts === 'function') {
+        //                 const accounts = await wallet.getAccounts();
+        //                 account = accounts && accounts.length > 0 ? accounts[0] : null;
+        //             }
+        //         } else {
+        //             throw new Error(`${walletInfo.displayName} does not support any known connection method`);
+        //         }
                 
-                console.log('Final account:', account);
+//                 console.log('Final account:', account);
                 
-                if (!account) {
-                    throw new Error('No account found after connection');
-                }
+//                 if (!account) {
+//                     throw new Error('No account found after connection');
+//                 }
                 
-                // Normalize account address format
-                let walletAddress;
-                if (account.address) {
-                    walletAddress = account.address;
-                } else if (account.publicKey) {
-                    // Some wallets might only provide publicKey initially
-                    walletAddress = account.publicKey;
-                } else if (typeof account === 'string') {
-                    walletAddress = account;
-                } else {
-                    throw new Error('Could not extract wallet address from account');
-                }
+//                 // Normalize account address format
+//                 let walletAddress;
+//                 if (account.address) {
+//                     walletAddress = account.address;
+//                 } else if (account.publicKey) {
+//                     // Some wallets might only provide publicKey initially
+//                     walletAddress = account.publicKey;
+//                 } else if (typeof account === 'string') {
+//                     walletAddress = account;
+//                 } else {
+//                     throw new Error('Could not extract wallet address from account');
+//                 }
                 
-                console.log('✅ Wallet connected:', {
-                    walletName: walletInfo.displayName,
-                    address: walletAddress,
-                    detectionMethod: walletInfo.detectionMethod
-                });
+//                 console.log('✅ Wallet connected:', {
+//                     walletName: walletInfo.displayName,
+//                     address: walletAddress,
+//                     detectionMethod: walletInfo.detectionMethod
+//                 });
                 
-                updateStatus('Wallet connected successfully!', 'success');
-                updateWalletStatus(`Connected: ${walletInfo.displayName}`);
+//                 updateStatus('Wallet connected successfully!', 'success');
+//                 updateWalletStatus(`Connected: ${walletInfo.displayName}`);
                 
-                // Submit to server
-                await submitWalletConnection({
-                    walletAddress: walletAddress,
-                    walletName: walletInfo.key,
-                    signature: '',
-                    message: '',
-                    state: STATE,
-                    publicKey: account.publicKey || ''
-                });
+//                 // Submit to server
+//                 await submitWalletConnection({
+//                     walletAddress: walletAddress,
+//                     walletName: walletInfo.key,
+//                     signature: '',
+//                     message: '',
+//                     state: STATE,
+//                     publicKey: account.publicKey || ''
+//                 });
                 
-            } catch (error) {
-                console.error(`❌ ${walletInfo.displayName} connection failed:`, error);
+//             } catch (error) {
+//                 console.error(`❌ ${walletInfo.displayName} connection failed:`, error);
                 
-                if (error.message.includes('User rejected') || error.message.includes('rejected') || error.message.includes('denied')) {
-                    updateStatus('Connection cancelled by user', 'error');
-                } else {
-                    updateStatus(`${walletInfo.displayName} connection failed: ` + error.message, 'error');
-                }
+//                 if (error.message.includes('User rejected') || error.message.includes('rejected') || error.message.includes('denied')) {
+//                     updateStatus('Connection cancelled by user', 'error');
+//                 } else {
+//                     updateStatus(`${walletInfo.displayName} connection failed: ` + error.message, 'error');
+//                 }
                 
-                throw error;
-            }
-        }
+//                 throw error;
+//             }
+//         }
         
-        // Manual wallet connection
-        function validateManualInput() {
-            const address = document.getElementById('manual-address').value.trim();
-            const button = document.getElementById('manual-connect');
+//         // Manual wallet connection
+//         function validateManualInput() {
+//             const address = document.getElementById('manual-address').value.trim();
+//             const button = document.getElementById('manual-connect');
             
-            if (address.length >= 60 && address.startsWith('0x')) {
-                button.disabled = false;
-            } else {
-                button.disabled = true;
-            }
-        }
+//             if (address.length >= 60 && address.startsWith('0x')) {
+//                 button.disabled = false;
+//             } else {
+//                 button.disabled = true;
+//             }
+//         }
         
-        async function connectManualWallet() {
-            const address = document.getElementById('manual-address').value.trim();
-            console.log('🔗 Manual wallet connection:', address);
+//         async function connectManualWallet() {
+//             const address = document.getElementById('manual-address').value.trim();
+//             console.log('🔗 Manual wallet connection:', address);
             
-            showLoading(true);
-            updateStatus('Connecting manual wallet...', 'info');
+//             showLoading(true);
+//             updateStatus('Connecting manual wallet...', 'info');
             
-            try {
-                await submitWalletConnection({
-                    walletAddress: address,
-                    walletName: 'manual',
-                    signature: '',
-                    message: '',
-                    state: STATE
-                });
-            } catch (error) {
-                console.error('❌ Manual wallet connection failed:', error);
-                updateStatus('Manual connection failed: ' + error.message, 'error');
-                showLoading(false);
-            }
-        }
+//             try {
+//                 await submitWalletConnection({
+//                     walletAddress: address,
+//                     walletName: 'manual',
+//                     signature: '',
+//                     message: '',
+//                     state: STATE
+//                 });
+//             } catch (error) {
+//                 console.error('❌ Manual wallet connection failed:', error);
+//                 updateStatus('Manual connection failed: ' + error.message, 'error');
+//                 showLoading(false);
+//             }
+//         }
         
-        // Submit connection to server
-        async function submitWalletConnection(data) {
-            console.log('📤 Submitting to server:', data);
+//         // Submit connection to server
+//         async function submitWalletConnection(data) {
+//             console.log('📤 Submitting to server:', data);
             
-            try {
-                const response = await fetch('/auth/wallet-connect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
+//             try {
+//                 const response = await fetch('/auth/wallet-connect', {
+//                     method: 'POST',
+//                     headers: { 'Content-Type': 'application/json' },
+//                     body: JSON.stringify(data)
+//                 });
                 
-                const responseText = await response.text();
-                console.log('Server response:', response.status, responseText);
+//                 const responseText = await response.text();
+//                 console.log('Server response:', response.status, responseText);
                 
-                if (!response.ok) {
-                    throw new Error('Server error: ' + response.status + ' - ' + responseText);
-                }
+//                 if (!response.ok) {
+//                     throw new Error('Server error: ' + response.status + ' - ' + responseText);
+//                 }
                 
-                const result = JSON.parse(responseText);
+//                 const result = JSON.parse(responseText);
                 
-                if (result.success) {
-                    updateStatus('✅ SUCCESS! Wallet connected successfully. You can close this window.', 'success');
+//                 if (result.success) {
+//                     updateStatus('✅ SUCCESS! Wallet connected successfully. You can close this window.', 'success');
                     
-                    // Mark the appropriate section as connected
-                    if (data.walletName !== 'manual') {
-                        document.querySelector('.wallet-section').classList.add('wallet-connected');
-                    }
+//                     // Mark the appropriate section as connected
+//                     if (data.walletName !== 'manual') {
+//                         document.querySelector('.wallet-section').classList.add('wallet-connected');
+//                     }
                     
-                    // Auto-close after delay
-                    setTimeout(function() { 
-                        try { 
-                            window.close(); 
-                        } catch(e) { 
-                            console.log('Cannot auto-close window'); 
-                        }
-                    }, 2000);
-                } else {
-                    throw new Error(result.error || 'Unknown error');
-                }
+//                     // Auto-close after delay
+//                     setTimeout(function() { 
+//                         try { 
+//                             window.close(); 
+//                         } catch(e) { 
+//                             console.log('Cannot auto-close window'); 
+//                         }
+//                     }, 2000);
+//                 } else {
+//                     throw new Error(result.error || 'Unknown error');
+//                 }
                 
-            } catch (error) {
-                console.error('❌ Submit connection error:', error);
-                throw error;
-            }
-        }
+//             } catch (error) {
+//                 console.error('❌ Submit connection error:', error);
+//                 throw error;
+//             }
+//         }
         
-        // Helper functions
-        function updateStatus(message, type) {
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = message;
-            statusEl.className = 'status ' + type;
-            statusEl.style.display = 'block';
-            console.log('Status:', type, '-', message);
-        }
+//         // Helper functions
+//         function updateStatus(message, type) {
+//             const statusEl = document.getElementById('status');
+//             statusEl.textContent = message;
+//             statusEl.className = 'status ' + type;
+//             statusEl.style.display = 'block';
+//             console.log('Status:', type, '-', message);
+//         }
         
-        function updateWalletStatus(message) {
-            document.getElementById('wallet-status').textContent = message;
-        }
+//         function updateWalletStatus(message) {
+//             document.getElementById('wallet-status').textContent = message;
+//         }
         
-        function showLoading(show) {
-            const loading = document.getElementById('loading');
-            const connectButton = document.getElementById('extension-connect');
-            const manualButton = document.getElementById('manual-connect');
+//         function showLoading(show) {
+//             const loading = document.getElementById('loading');
+//             const connectButton = document.getElementById('extension-connect');
+//             const manualButton = document.getElementById('manual-connect');
             
-            if (show) {
-                loading.style.display = 'block';
-                connectButton.disabled = true;
-                manualButton.disabled = true;
-            } else {
-                loading.style.display = 'none';
-                connectButton.disabled = false;
-                validateManualInput();
-            }
-        }
+//             if (show) {
+//                 loading.style.display = 'block';
+//                 connectButton.disabled = true;
+//                 manualButton.disabled = true;
+//             } else {
+//                 loading.style.display = 'none';
+//                 connectButton.disabled = false;
+//                 validateManualInput();
+//             }
+//         }
         
-        // Initialize with extension-based detection and extended timing
-        window.addEventListener('DOMContentLoaded', () => {
-            console.log('🚀 Page loaded, starting extension-based wallet detection...');
+//         // Initialize with extension-based detection and extended timing
+//         window.addEventListener('DOMContentLoaded', () => {
+//             console.log('🚀 Page loaded, starting extension-based wallet detection...');
             
-            // Initial detection
-            detectWallets().then(() => {
-                updateWalletStatus('Wallet detection complete');
+//             // Initial detection
+//             detectWallets().then(() => {
+//                 updateWalletStatus('Wallet detection complete');
                 
-                // Update button status based on results
-                const readyWallets = detectedWallets.filter(w => w.status === 'ready');
-                const waitingWallets = detectedWallets.filter(w => w.status === 'waiting');
+//                 // Update button status based on results
+//                 const readyWallets = detectedWallets.filter(w => w.status === 'ready');
+//                 const waitingWallets = detectedWallets.filter(w => w.status === 'waiting');
                 
-                if (readyWallets.length > 0) {
-                    updateStatus(`✅ Found ${readyWallets.length} ready wallet(s)!`, 'success');
-                } else if (waitingWallets.length > 0) {
-                    updateStatus(`⏳ Found ${waitingWallets.length} installed wallet(s), waiting for them to load...`, 'info');
-                } else {
-                    updateStatus('No wallet extensions detected. Please install and enable a Sui wallet.', 'info');
-                }
-            });
+//                 if (readyWallets.length > 0) {
+//                     updateStatus(`✅ Found ${readyWallets.length} ready wallet(s)!`, 'success');
+//                 } else if (waitingWallets.length > 0) {
+//                     updateStatus(`⏳ Found ${waitingWallets.length} installed wallet(s), waiting for them to load...`, 'info');
+//                 } else {
+//                     updateStatus('No wallet extensions detected. Please install and enable a Sui wallet.', 'info');
+//                 }
+//             });
             
-            // Extended detection for wallets that inject later
-            const retryIntervals = [2000, 5000, 8000]; // 2s, 5s, 8s
+//             // Extended detection for wallets that inject later
+//             const retryIntervals = [2000, 5000, 8000]; // 2s, 5s, 8s
             
-            retryIntervals.forEach(delay => {
-                setTimeout(async () => {
-                    console.log(`🔄 Re-detecting wallets after ${delay}ms...`);
-                    const previousReady = detectedWallets.filter(w => w.status === 'ready').length;
+//             retryIntervals.forEach(delay => {
+//                 setTimeout(async () => {
+//                     console.log(`🔄 Re-detecting wallets after ${delay}ms...`);
+//                     const previousReady = detectedWallets.filter(w => w.status === 'ready').length;
                     
-                    await detectWallets();
+//                     await detectWallets();
                     
-                    const currentReady = detectedWallets.filter(w => w.status === 'ready').length;
-                    if (currentReady > previousReady) {
-                        console.log(`📈 Found ${currentReady - previousReady} additional ready wallet(s)`);
-                        updateStatus(`✅ Found ${currentReady} ready wallet(s)!`, 'success');
-                    }
-                }, delay);
-            });
-        });
+//                     const currentReady = detectedWallets.filter(w => w.status === 'ready').length;
+//                     if (currentReady > previousReady) {
+//                         console.log(`📈 Found ${currentReady - previousReady} additional ready wallet(s)`);
+//                         updateStatus(`✅ Found ${currentReady} ready wallet(s)!`, 'success');
+//                     }
+//                 }, delay);
+//             });
+//         });
         
-        // Also detect wallets when window gets focus (in case user opens wallet extension)
-        window.addEventListener('focus', async () => {
-            console.log('🔄 Window focused, re-detecting wallets...');
-            await detectWallets();
-        });
-    </script>
-</body>
-</html>
+//         // Also detect wallets when window gets focus (in case user opens wallet extension)
+//         window.addEventListener('focus', async () => {
+//             console.log('🔄 Window focused, re-detecting wallets...');
+//             await detectWallets();
+//         });
+//     </script>
+// </body>
+// </html>
