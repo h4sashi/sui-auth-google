@@ -2,7 +2,7 @@ services:
   - type: web
     name: athera-wallet-app
     env: node
-    buildCommand: npm install && npm run build
+    buildCommand: rm -rf node_modules package-lock.json && npm install && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
