@@ -19,6 +19,7 @@
     "@mysten/wallet-adapter-unsafe-burner": "^0.10.0",
     "@mysten/wallet-standard": "^0.17.0",
     "@mysten/zklogin": "^0.8.1",
+    "@suiet/wallet-kit": "^0.5.1",
     "@supabase/supabase-js": "^2.57.4",
     "@wallet-standard/core": "^1.1.1",
     "@wallet-standard/features": "^1.1.0",
