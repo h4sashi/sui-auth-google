@@ -296,115 +296,172 @@
             },
         ];
         
-        // Detect available wallets with comprehensive checking
+        // Debug-enabled comprehensive wallet detection
         function detectWallets() {
-            console.log('🔍 Detecting installed wallets...');
-            console.log('Available window properties:', Object.keys(window).filter(k => k.toLowerCase().includes('wallet') || k.toLowerCase().includes('sui') || ['suiet', 'glass', 'ethos', 'martian', 'nightly', 'slush', 'surf'].includes(k.toLowerCase())));
+            console.log('🔍 COMPREHENSIVE WALLET DETECTION STARTING...');
+            console.log('==========================================');
             
-            detectedWallets = [];
+            // First, let's see what's actually available in the window
+            const allWindowKeys = Object.keys(window);
+            console.log('📋 Total window properties:', allWindowKeys.length);
             
-            WALLET_TYPES.forEach(wallet => {
+            // Filter for potentially wallet-related properties
+            const walletRelatedKeys = allWindowKeys.filter(key => {
+                const lowerKey = key.toLowerCase();
+                return (
+                    lowerKey.includes('wallet') ||
+                    lowerKey.includes('sui') ||
+                    lowerKey.includes('suiet') ||
+                    lowerKey.includes('glass') ||
+                    lowerKey.includes('ethos') ||
+                    lowerKey.includes('martian') ||
+                    lowerKey.includes('nightly') ||
+                    lowerKey.includes('slush') ||
+                    lowerKey.includes('surf') ||
+                    lowerKey.includes('onekey') ||
+                    lowerKey.includes('tokenpocket') ||
+                    key === 'sui' ||
+                    key === 'suiet' ||
+                    key === 'glass' ||
+                    key === 'ethos' ||
+                    key === 'martian' ||
+                    key === 'nightly' ||
+                    key === 'slush' ||
+                    key === 'surf'
+                );
+            });
+            
+            console.log('🔍 Wallet-related window properties found:', walletRelatedKeys);
+            
+            // Examine each potentially wallet-related property
+            walletRelatedKeys.forEach(key => {
                 try {
-                    let walletInstance = null;
-                    let detectionMethod = '';
-                    
-                    // Try multiple detection patterns for each wallet
-                    for (const pattern of wallet.checkPatterns) {
-                        if (pattern.startsWith('window.')) {
-                            const key = pattern.replace('window.', '');
-                            if (window[key] && typeof window[key] === 'object') {
-                                walletInstance = window[key];
-                                detectionMethod = pattern;
-                                break;
-                            }
-                        } else {
-                            if (window[pattern] && typeof window[pattern] === 'object') {
-                                walletInstance = window[pattern];
-                                detectionMethod = pattern;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Additional checks for specific wallets
-                    if (!walletInstance) {
-                        // Check if wallet has standard Sui wallet interface
-                        if (checkSuiWalletInterface(wallet.key)) {
-                            walletInstance = window[wallet.key];
-                            detectionMethod = 'sui-interface';
-                        }
-                    }
-                    
-                    if (walletInstance) {
-                        console.log(`✅ Found wallet: ${wallet.displayName} via ${detectionMethod}`);
-                        console.log(`   - Object keys:`, Object.keys(walletInstance));
-                        
-                        detectedWallets.push({
-                            ...wallet,
-                            instance: walletInstance,
-                            detectionMethod
+                    const obj = window[key];
+                    if (obj && typeof obj === 'object') {
+                        const objKeys = Object.keys(obj);
+                        console.log(`📦 window.${key}:`, {
+                            type: typeof obj,
+                            constructor: obj.constructor?.name,
+                            keys: objKeys,
+                            hasConnect: typeof obj.connect === 'function',
+                            hasGetAccounts: typeof obj.getAccounts === 'function',
+                            hasRequestPermissions: typeof obj.requestPermissions === 'function',
+                            hasEnable: typeof obj.enable === 'function',
+                            hasSignAndExecuteTransactionBlock: typeof obj.signAndExecuteTransactionBlock === 'function'
                         });
                     } else {
-                        console.log(`❌ Wallet not found: ${wallet.displayName}`);
+                        console.log(`📦 window.${key}:`, typeof obj, obj);
                     }
-                } catch (error) {
-                    console.log(`❌ Error checking ${wallet.displayName}:`, error.message);
+                } catch (e) {
+                    console.log(`❌ Error examining window.${key}:`, e.message);
                 }
             });
             
-            // Also do a generic scan for any unrecognized Sui wallets
-            scanForUnrecognizedWallets();
+            detectedWallets = [];
+            
+            // Now try to detect specific wallets with all possible patterns
+            const walletPatterns = {
+                'Sui Wallet': ['suiWallet', 'SuiWallet', 'sui'],
+                'Suiet': ['suiet', 'Suiet', 'SUIET'],
+                'Glass Wallet': ['glass', 'Glass', 'glassWallet', 'GlassWallet'],
+                'Slush': ['slush', 'Slush', 'SlushWallet', 'slushWallet'],
+                'Ethos Wallet': ['ethos', 'Ethos', 'ethosWallet', 'EthosWallet'],
+                'Martian Wallet': ['martian', 'Martian', 'martianWallet', 'MartianWallet'],
+                'Nightly': ['nightly', 'Nightly', 'nightlyWallet', 'NightlyWallet'],
+                'OneKey': ['onekey', 'OneKey', '$onekey', 'onekeyWallet'],
+                'TokenPocket': ['tokenpocket', 'TokenPocket', 'tpWallet', 'tp'],
+                'Surf Wallet': ['surf', 'Surf', 'surfWallet', 'SurfWallet']
+            };
+            
+            console.log('🔍 Testing specific wallet patterns...');
+            
+            Object.entries(walletPatterns).forEach(([walletName, patterns]) => {
+                console.log(`\n🧪 Testing ${walletName}:`);
+                
+                let foundWallet = null;
+                let foundPattern = null;
+                
+                for (const pattern of patterns) {
+                    try {
+                        const obj = window[pattern];
+                        if (obj && typeof obj === 'object') {
+                            console.log(`  ✅ Found via window.${pattern}`);
+                            console.log(`     - Keys:`, Object.keys(obj));
+                            console.log(`     - Has connect():`, typeof obj.connect === 'function');
+                            console.log(`     - Has getAccounts():`, typeof obj.getAccounts === 'function');
+                            console.log(`     - Constructor:`, obj.constructor?.name);
+                            
+                            // Check if it looks like a Sui wallet
+                            const hasSuiMethods = typeof obj.connect === 'function' || 
+                                                typeof obj.getAccounts === 'function' ||
+                                                typeof obj.signAndExecuteTransactionBlock === 'function';
+                            
+                            if (hasSuiMethods && !foundWallet) {
+                                foundWallet = obj;
+                                foundPattern = pattern;
+                                console.log(`     - ✅ DETECTED as viable Sui wallet!`);
+                            }
+                        } else {
+                            console.log(`  ❌ window.${pattern}:`, typeof obj);
+                        }
+                    } catch (e) {
+                        console.log(`  ❌ Error checking ${pattern}:`, e.message);
+                    }
+                }
+                
+                if (foundWallet) {
+                    detectedWallets.push({
+                        name: walletName,
+                        key: foundPattern,
+                        displayName: walletName,
+                        instance: foundWallet,
+                        detectionMethod: `window.${foundPattern}`
+                    });
+                    console.log(`  🎉 ${walletName} ADDED to detected wallets`);
+                } else {
+                    console.log(`  ❌ ${walletName} NOT FOUND`);
+                }
+            });
+            
+            // Also do a generic scan for any unrecognized wallets
+            console.log('\n🔍 Generic scan for unrecognized wallets...');
+            const knownPatterns = Object.values(walletPatterns).flat();
+            
+            allWindowKeys.forEach(key => {
+                if (knownPatterns.includes(key)) return; // Already checked
+                
+                try {
+                    const obj = window[key];
+                    if (obj && typeof obj === 'object') {
+                        const hasSuiMethods = typeof obj.connect === 'function' || 
+                                            typeof obj.getAccounts === 'function' ||
+                                            typeof obj.signAndExecuteTransactionBlock === 'function';
+                        
+                        if (hasSuiMethods) {
+                            console.log(`🆕 Found unrecognized Sui wallet: window.${key}`);
+                            detectedWallets.push({
+                                name: key,
+                                key: key,
+                                displayName: `${key} (Unrecognized)`,
+                                instance: obj,
+                                detectionMethod: `window.${key} (generic)`
+                            });
+                        }
+                    }
+                } catch (e) {
+                    // Ignore errors
+                }
+            });
+            
+            console.log('\n🎯 FINAL RESULTS:');
+            console.log(`   - Total detected wallets: ${detectedWallets.length}`);
+            detectedWallets.forEach((wallet, index) => {
+                console.log(`   ${index + 1}. ${wallet.displayName} (${wallet.detectionMethod})`);
+            });
+            console.log('==========================================');
             
             displayDetectedWallets();
             return detectedWallets.length > 0;
-        }
-        
-        // Helper function to check if an object implements Sui wallet interface
-        function checkSuiWalletInterface(key) {
-            try {
-                const obj = window[key];
-                if (!obj || typeof obj !== 'object') return false;
-                
-                // Check for common Sui wallet methods
-                const hasConnect = typeof obj.connect === 'function';
-                const hasGetAccounts = typeof obj.getAccounts === 'function';
-                const hasSignAndExecuteTransactionBlock = typeof obj.signAndExecuteTransactionBlock === 'function';
-                
-                return hasConnect || hasGetAccounts || hasSignAndExecuteTransactionBlock;
-            } catch (e) {
-                return false;
-            }
-        }
-        
-        // Scan for any wallet-like objects that we might have missed
-        function scanForUnrecognizedWallets() {
-            console.log('🔍 Scanning for unrecognized wallets...');
-            
-            const knownKeys = WALLET_TYPES.map(w => w.key);
-            const detectedKeys = detectedWallets.map(w => w.key);
-            
-            // Check all window properties for wallet-like objects
-            for (const key in window) {
-                try {
-                    if (knownKeys.includes(key) || detectedKeys.includes(key)) continue;
-                    
-                    const obj = window[key];
-                    if (obj && typeof obj === 'object' && checkSuiWalletInterface(key)) {
-                        console.log(`✅ Found unrecognized wallet: ${key}`);
-                        
-                        detectedWallets.push({
-                            name: key,
-                            key: key,
-                            displayName: `${key.charAt(0).toUpperCase() + key.slice(1)} Wallet`,
-                            checkPatterns: [key],
-                            instance: obj,
-                            detectionMethod: 'generic-scan'
-                        });
-                    }
-                } catch (e) {
-                    // Ignore errors when checking window properties
-                }
-            }
         }
         
         // Display detected wallets
