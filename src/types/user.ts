@@ -21,7 +21,7 @@ export interface WalletConnectionResult {
     balance: string
     balanceFormatted?: string
     network: string
-    error?: string
+    error?: string | null
   }
   profile?: UserProfile
   error?: string

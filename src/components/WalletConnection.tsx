@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ConnectButton, useWallet } from '@suiet/wallet-kit'
+import { ConnectButton } from '@suiet/wallet-kit'
 import { useWalletConnection } from '@/hooks/useWalletConnection'
 
 export default function WalletConnection() {
@@ -67,7 +67,7 @@ export default function WalletConnection() {
         <div className="space-y-4">
           {/* Connected Wallet Info */}
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h3 className="text-green-800 font-semibold mb-2">✅ Wallet Connected</h3>
+            <h3 className="text-green-800 font-bold mb-2">✅ Wallet Connected</h3>
             <p className="text-sm text-green-700 break-all">
               {wallet.account?.address}
             </p>
@@ -104,7 +104,7 @@ export default function WalletConnection() {
           {showUsernameSetup && (
             <form onSubmit={handleUsernameSetup} className="space-y-4">
               <div>
-                <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="username" className="block text-sm font-bold text-gray-700 mb-1">
                   Choose Your Username
                 </label>
                 <input
@@ -112,7 +112,7 @@ export default function WalletConnection() {
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md"
                   placeholder="Enter username (3-20 characters)"
                   minLength={3}
                   maxLength={20}
@@ -136,7 +136,7 @@ export default function WalletConnection() {
           {/* User Profile Display */}
           {userProfile && !showUsernameSetup && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h3 className="text-blue-800 font-semibold mb-2">👤 User Profile</h3>
+              <h3 className="text-blue-800 font-bold mb-2">👤 User Profile</h3>
               <p className="text-sm text-blue-700">Name: {userProfile.name}</p>
               <p className="text-sm text-blue-700">Auth Method: {userProfile.auth_method}</p>
               <p className="text-xs text-blue-600 mt-1 break-all">

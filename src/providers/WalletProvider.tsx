@@ -3,7 +3,7 @@
 
 import { WalletProvider } from '@suiet/wallet-kit'
 import { SuiDevnetChain, SuiTestnetChain, SuiMainnetChain } from '@suiet/wallet-kit'
-import '@suiet/wallet-kit/style.css'
+// Remove this line: import '@suiet/wallet-kit/style.css'
 
 const chains = [SuiDevnetChain, SuiTestnetChain, SuiMainnetChain]
 
@@ -14,7 +14,7 @@ export default function WalletContextProvider({
 }) {
   return (
     <WalletProvider chains={chains} autoConnect>
-      {children}
+      {/* {children} */}
     </WalletProvider>
   )
 }

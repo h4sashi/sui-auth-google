@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const supabase = createServerSupabaseClient()
 
     // Check if username is already taken
-    const { data: existingUser, error: checkError } = await supabase
+    const { data: existingUser } = await supabase
       .from('user_profiles')
       .select('id')
       .eq('name', trimmedUsername)
@@ -79,11 +79,12 @@ export async function POST(request: NextRequest) {
       }
     })
 
-  } catch (err: any) {
-    console.error('Username setup error:', err)
+  } catch (err) {
+    const error = err as Error
+    console.error('Username setup error:', error)
     return NextResponse.json({
       success: false,
-      error: 'Username setup failed: ' + err.message
+      error: 'Username setup failed: ' + error.message
     }, { status: 500 })
   }
 }

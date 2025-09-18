@@ -1,3 +1,5 @@
+# render.yaml
+# This file is used by Render.com to configure the deployment of the application.
 services:
   - type: web
     name: athera-wallet-app

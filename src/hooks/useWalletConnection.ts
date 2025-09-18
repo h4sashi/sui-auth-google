@@ -41,10 +41,11 @@ export function useWalletConnection() {
       setConnectionResult(result)
       return result
 
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       const errorResult: WalletConnectionResult = {
         success: false,
-        error: error.message
+        error: errorMessage
       }
       setConnectionResult(errorResult)
       return errorResult
@@ -79,10 +80,11 @@ export function useWalletConnection() {
 
       return result
 
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       return {
         success: false,
-        error: error.message
+        error: errorMessage
       }
     }
   }
