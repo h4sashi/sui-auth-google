@@ -173,27 +173,15 @@
             font-weight: 500;
             color: #333;
         }
-        .wallet-status-text {
+        .wallet-status {
             font-size: 12px;
             color: #666;
-        }
-        .debug-info {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
-            padding: 10px;
-            margin: 10px 0;
-            font-family: monospace;
-            font-size: 12px;
-            text-align: left;
-            max-height: 200px;
-            overflow-y: auto;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="title">Connect Your Sui Wallet</div>
+        <div class="title">Connect Your Wallet</div>
         <div class="subtitle">Choose how you'd like to connect your Sui wallet to continue</div>
         
         <div id="status" class="status info" style="display: none;">Ready to connect</div>
@@ -211,12 +199,6 @@
                 Detect & Connect Wallet
             </button>
             <div id="wallet-status" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
-            
-            <!-- Debug information -->
-            <details style="margin-top: 15px;">
-                <summary style="cursor: pointer; color: #666; font-size: 12px;">Show Debug Info</summary>
-                <div id="debug-info" class="debug-info"></div>
-            </details>
         </div>
         
         <div class="divider">
@@ -249,317 +231,237 @@
     <script>
         const STATE = '{{STATE}}';
         let detectedWallets = [];
-        let debugLog = [];
         
-        // Debug logging function
-        function addDebugLog(message) {
-            const timestamp = new Date().toLocaleTimeString();
-            debugLog.push(`[${timestamp}] ${message}`);
-            updateDebugDisplay();
-            console.log(message);
-        }
-        
-        function updateDebugDisplay() {
-            const debugElement = document.getElementById('debug-info');
-            debugElement.innerHTML = debugLog.join('\n');
-            debugElement.scrollTop = debugElement.scrollHeight;
-        }
-        
-        // Standard Sui wallet detection using the Wallet Standard
-        async function detectStandardWallets() {
-            addDebugLog('🔍 Detecting wallets using Wallet Standard...');
-            
-            // Check if wallet standard is available
-            if (typeof window.suiWallets !== 'undefined') {
-                addDebugLog('✅ Found window.suiWallets');
-                return window.suiWallets.getWallets();
+        // Known Sui wallet extensions with their Chrome extension IDs
+        const WALLET_EXTENSIONS = [
+            {
+                name: 'Suiet Wallet',
+                id: 'khpkpbbcccdmmclmpigdgddabeilkdpd',
+                key: 'suiet',
+                displayName: 'Suiet Wallet',
+                windowProperty: ['suiet', 'Suiet'],
+                connectMethod: 'connect'
+            },
+            {
+                name: 'Glass Wallet', 
+                id: 'loinekcabhlmhjjbocijdoimmejangoa',
+                key: 'glass',
+                displayName: 'Glass Wallet',
+                windowProperty: ['glass', 'glassWallet'],
+                connectMethod: 'connect'
+            },
+            {
+                name: 'Slush Wallet',
+                id: 'hmjkpibdngfnboloaalapofkjdkdchld', 
+                key: 'slush',
+                displayName: 'Slush Wallet',
+                windowProperty: ['slush', 'slushWallet'],
+                connectMethod: 'connect'
+            },
+            {
+                name: 'Martian Wallet',
+                id: 'efbglgofoippbgcjepnhiblaibcnclgk',
+                key: 'martian',
+                displayName: 'Martian Wallet',
+                windowProperty: ['martian', 'martianWallet'],
+                connectMethod: 'connect'
+            },
+            {
+                name: 'Sui Wallet',
+                id: 'opcgpfmipidbgpenhmajoajpbobppdil',
+                key: 'suiWallet',
+                displayName: 'Sui Wallet',
+                windowProperty: ['suiWallet', 'sui'],
+                connectMethod: 'connect'
+            },
+            {
+                name: 'Ethos Wallet',
+                id: 'mcbigmjiafegjnnogedioegffbooigli',
+                key: 'ethos',
+                displayName: 'Ethos Wallet',
+                windowProperty: ['ethos', 'ethosWallet'],
+                connectMethod: 'connect'
             }
-            
-            // Check for wallet standard in various locations
-            const possibleLocations = [
-                'window.wallets',
-                'window.suiWallet', 
-                'window.wallet',
-                'window.__sui_wallets__'
-            ];
-            
-            for (const location of possibleLocations) {
-                try {
-                    const wallet = eval(location);
-                    if (wallet) {
-                        addDebugLog(`✅ Found wallet at ${location}`);
-                        return Array.isArray(wallet) ? wallet : [wallet];
-                    }
-                } catch (e) {
-                    addDebugLog(`❌ ${location} not found`);
+        ];
+        
+        // Check if extension is installed by trying to access its web accessible resources
+        async function checkExtensionInstalled(extensionId) {
+            return new Promise((resolve) => {
+                // Method 1: Try to fetch a web accessible resource
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => {
+                    // Method 2: Try to access extension URL
+                    fetch(`chrome-extension://${extensionId}/manifest.json`)
+                        .then(() => resolve(true))
+                        .catch(() => resolve(false));
+                };
+                // Many extensions have an icon as web accessible resource
+                img.src = `chrome-extension://${extensionId}/icon.png`;
+                
+                // Timeout after 1 second
+                setTimeout(() => resolve(false), 1000);
+            });
+        }
+        
+        // Check if extension injects into window
+        function checkWindowProperty(wallet) {
+            for (const prop of wallet.windowProperty) {
+                if (window[prop] && typeof window[prop] === 'object') {
+                    console.log(`✅ Found ${wallet.displayName} via window.${prop}`);
+                    return window[prop];
                 }
             }
-            
-            return [];
+            return null;
         }
         
-        // Enhanced wallet detection using multiple methods
+        // Enhanced wallet detection using both extension ID and window injection
         async function detectWallets() {
-            addDebugLog('🔍 STARTING COMPREHENSIVE WALLET DETECTION...');
-            addDebugLog('==========================================');
+            console.log('🔍 ENHANCED WALLET DETECTION STARTING...');
+            console.log('==========================================');
             
             detectedWallets = [];
             const container = document.getElementById('detected-wallets');
-            container.innerHTML = '<div class="wallet-status-text">Detecting wallets...</div>';
+            container.innerHTML = '<div class="wallet-status">Detecting wallets...</div>';
             
-            // Method 1: Standard Sui wallets
-            try {
-                const standardWallets = await detectStandardWallets();
-                addDebugLog(`📋 Standard wallets found: ${standardWallets.length}`);
+            console.log(`📋 Checking ${WALLET_EXTENSIONS.length} known wallet extensions...`);
+            
+            for (const wallet of WALLET_EXTENSIONS) {
+                console.log(`\n🧪 Checking ${wallet.displayName} (${wallet.id})...`);
                 
-                standardWallets.forEach((wallet, index) => {
-                    addDebugLog(`   ${index + 1}. ${wallet.name || 'Unknown'} (Standard API)`);
+                // Check both extension presence and window injection
+                const isExtensionInstalled = await checkExtensionInstalled(wallet.id);
+                const windowObject = checkWindowProperty(wallet);
+                
+                console.log(`   - Extension installed: ${isExtensionInstalled}`);
+                console.log(`   - Window injection: ${!!windowObject}`);
+                
+                if (windowObject) {
+                    // Extension is installed AND injected - ready to use
+                    console.log(`   ✅ ${wallet.displayName} READY TO CONNECT`);
                     detectedWallets.push({
-                        name: wallet.name || `Wallet ${index + 1}`,
-                        instance: wallet,
-                        type: 'standard',
+                        ...wallet,
+                        instance: windowObject,
+                        detectionMethod: 'window-injection',
                         status: 'ready'
                     });
-                });
-            } catch (error) {
-                addDebugLog(`❌ Standard wallet detection error: ${error.message}`);
+                } else if (isExtensionInstalled) {
+                    // Extension is installed but not injected yet
+                    console.log(`   ⏳ ${wallet.displayName} INSTALLED BUT WAITING FOR INJECTION`);
+                    detectedWallets.push({
+                        ...wallet,
+                        instance: null,
+                        detectionMethod: 'extension-only',
+                        status: 'waiting'
+                    });
+                } else {
+                    console.log(`   ❌ ${wallet.displayName} NOT FOUND`);
+                }
             }
             
-            // Method 2: Check for common Sui wallet objects in window
-            const commonWalletKeys = [
-                'suiWallet', 'sui', 'suiet', 'Suiet',
-                'martianWallet', 'martian', 'Martian',
-                'ethosWallet', 'ethos', 'Ethos',
-                'glassWallet', 'glass', 'Glass',
-                'slushWallet', 'slush', 'Slush',
-                'nightly', 'Nightly'
-            ];
+            // Also scan for any unrecognized wallets in window
+            console.log('\n🔍 Scanning for unrecognized wallets...');
+            const knownProps = WALLET_EXTENSIONS.map(w => w.windowProperty).flat();
+            const allWindowKeys = Object.keys(window);
             
-            addDebugLog('\n🔍 Checking window objects...');
-            
-            commonWalletKeys.forEach(key => {
+            allWindowKeys.forEach(key => {
+                if (knownProps.includes(key)) return; // Already checked
+                
                 try {
-                    const wallet = window[key];
-                    if (wallet && typeof wallet === 'object') {
-                        // Check if it has Sui wallet methods
-                        const hasSuiMethods = (
-                            typeof wallet.connect === 'function' ||
-                            typeof wallet.getAccounts === 'function' ||
-                            typeof wallet.signAndExecuteTransactionBlock === 'function' ||
-                            typeof wallet.signMessage === 'function'
-                        );
+                    const obj = window[key];
+                    if (obj && typeof obj === 'object') {
+                        const hasSuiMethods = typeof obj.connect === 'function' || 
+                                            typeof obj.getAccounts === 'function' ||
+                                            typeof obj.signAndExecuteTransactionBlock === 'function';
                         
                         if (hasSuiMethods) {
-                            addDebugLog(`✅ Found ${key} wallet via window object`);
-                            
-                            // Avoid duplicates from standard detection
-                            const isDuplicate = detectedWallets.some(w => 
-                                w.name.toLowerCase().includes(key.toLowerCase()) ||
-                                key.toLowerCase().includes(w.name.toLowerCase())
-                            );
-                            
-                            if (!isDuplicate) {
-                                detectedWallets.push({
-                                    name: key,
-                                    instance: wallet,
-                                    type: 'window',
-                                    status: 'ready'
-                                });
-                            } else {
-                                addDebugLog(`   (Skipping ${key} - already detected via standard API)`);
-                            }
-                        } else {
-                            addDebugLog(`   ${key} found but doesn't have Sui methods`);
+                            console.log(`🆕 Found unrecognized Sui wallet: window.${key}`);
+                            detectedWallets.push({
+                                name: key,
+                                id: 'unknown',
+                                key: key,
+                                displayName: `${key} (Unrecognized)`,
+                                windowProperty: [key],
+                                instance: obj,
+                                detectionMethod: 'window-scan',
+                                status: 'ready'
+                            });
                         }
                     }
-                } catch (error) {
-                    // Ignore errors when checking window properties
+                } catch (e) {
+                    // Ignore errors
                 }
             });
             
-            // Method 3: Check for wallet events or listeners
-            addDebugLog('\n🔍 Checking for wallet events...');
-            
-            // Some wallets fire events when ready
-            if (typeof window.addEventListener === 'function') {
-                // Listen for wallet ready events
-                const walletEvents = ['wallet-standard:app-ready', 'sui:wallet-ready'];
-                
-                walletEvents.forEach(eventName => {
-                    window.addEventListener(eventName, (event) => {
-                        addDebugLog(`📡 Received ${eventName} event`);
-                        // Re-detect wallets when events fire
-                        setTimeout(() => detectWallets(), 100);
-                    }, { once: true });
-                });
-            }
-            
-            addDebugLog('\n🎯 DETECTION RESULTS:');
-            addDebugLog(`   - Total wallets detected: ${detectedWallets.length}`);
+            console.log('\n🎯 DETECTION RESULTS:');
+            console.log(`   - Total wallets detected: ${detectedWallets.length}`);
+            console.log(`   - Ready to connect: ${detectedWallets.filter(w => w.status === 'ready').length}`);
+            console.log(`   - Waiting for injection: ${detectedWallets.filter(w => w.status === 'waiting').length}`);
             
             detectedWallets.forEach((wallet, index) => {
-                addDebugLog(`   ${index + 1}. ${wallet.name} (${wallet.type})`);
+                console.log(`   ${index + 1}. ${wallet.displayName} - ${wallet.status} (${wallet.detectionMethod})`);
             });
-            addDebugLog('==========================================');
+            console.log('==========================================');
             
             displayDetectedWallets();
             return detectedWallets.length > 0;
         }
         
-        // Display detected wallets
+        // Display detected wallets with enhanced status information
         function displayDetectedWallets() {
             const container = document.getElementById('detected-wallets');
             container.innerHTML = '';
             
             if (detectedWallets.length === 0) {
-                container.innerHTML = `
-                    <div class="wallet-status-text">
-                        No wallet extensions detected. 
-                        <br><br>
-                        Please install a Sui wallet extension such as:
-                        <br>• Suiet Wallet
-                        <br>• Martian Wallet  
-                        <br>• Ethos Wallet
-                        <br>• Glass Wallet
-                        <br><br>
-                        After installation, refresh this page.
-                    </div>
-                `;
+                container.innerHTML = '<div class="wallet-status">No wallet extensions detected. Please install a Sui wallet extension first.</div>';
                 return;
             }
             
             detectedWallets.forEach(wallet => {
                 const walletEl = document.createElement('div');
-                walletEl.className = 'wallet-option detected';
-                walletEl.innerHTML = `
-                    <div>
-                        <div class="wallet-name">${wallet.name}</div>
-                        <div class="wallet-status-text">Ready to Connect (${wallet.type})</div>
-                    </div>
-                    <div style="color: #28a745;">✓</div>
-                `;
-                walletEl.onclick = () => connectSpecificWallet(wallet);
+                
+                if (wallet.status === 'ready') {
+                    walletEl.className = 'wallet-option detected';
+                    walletEl.innerHTML = `
+                        <div>
+                            <div class="wallet-name">${wallet.displayName}</div>
+                            <div class="wallet-status">Ready to Connect</div>
+                        </div>
+                        <div style="color: #28a745;">✓</div>
+                    `;
+                    walletEl.onclick = () => connectSpecificWallet(wallet);
+                } else if (wallet.status === 'waiting') {
+                    walletEl.className = 'wallet-option';
+                    walletEl.style.borderColor = '#ffc107';
+                    walletEl.style.backgroundColor = '#fff9e6';
+                    walletEl.innerHTML = `
+                        <div>
+                            <div class="wallet-name">${wallet.displayName}</div>
+                            <div class="wallet-status">Installed but waiting for injection...</div>
+                        </div>
+                        <div style="color: #ffc107;">⏳</div>
+                    `;
+                    walletEl.onclick = () => {
+                        updateStatus(`${wallet.displayName} is installed but not ready yet. Try refreshing the page or opening the wallet extension first.`, 'info');
+                    };
+                } else {
+                    walletEl.className = 'wallet-option';
+                    walletEl.innerHTML = `
+                        <div>
+                            <div class="wallet-name">${wallet.displayName}</div>
+                            <div class="wallet-status">Not Available</div>
+                        </div>
+                        <div style="color: #dc3545;">✗</div>
+                    `;
+                }
+                
                 container.appendChild(walletEl);
             });
         }
         
-        // Enhanced wallet connection
-        async function connectSpecificWallet(walletInfo) {
-            addDebugLog(`🔗 Attempting to connect to ${walletInfo.name}...`);
-            
-            try {
-                showLoading(true);
-                updateStatus(`Connecting to ${walletInfo.name}...`, 'info');
-                
-                const wallet = walletInfo.instance;
-                
-                if (!wallet) {
-                    throw new Error(`${walletInfo.name} wallet instance not found`);
-                }
-                
-                addDebugLog(`📋 Available methods: ${Object.keys(wallet).join(', ')}`);
-                
-                let account = null;
-                let result = null;
-                
-                // Try connection based on wallet type
-                if (walletInfo.type === 'standard') {
-                    // Standard wallet API
-                    if (typeof wallet.connect === 'function') {
-                        addDebugLog('🔌 Using standard wallet connect()');
-                        result = await wallet.connect();
-                    } else if (typeof wallet.requestPermissions === 'function') {
-                        addDebugLog('🔐 Using standard wallet requestPermissions()');
-                        result = await wallet.requestPermissions({
-                            permissions: ['viewAccount']
-                        });
-                    }
-                } else {
-                    // Window-based wallet
-                    if (typeof wallet.connect === 'function') {
-                        addDebugLog('🔌 Using window wallet connect()');
-                        result = await wallet.connect();
-                    } else if (typeof wallet.requestPermissions === 'function') {
-                        addDebugLog('🔐 Using window wallet requestPermissions()');
-                        result = await wallet.requestPermissions();
-                    }
-                }
-                
-                addDebugLog(`📄 Connection result: ${JSON.stringify(result, null, 2)}`);
-                
-                // Extract account information
-                if (result) {
-                    if (result.accounts && result.accounts.length > 0) {
-                        account = result.accounts[0];
-                    } else if (result.account) {
-                        account = result.account;
-                    } else if (result.address) {
-                        account = result;
-                    }
-                }
-                
-                // If no account from connection, try getAccounts
-                if (!account && typeof wallet.getAccounts === 'function') {
-                    addDebugLog('📋 Trying getAccounts()...');
-                    const accounts = await wallet.getAccounts();
-                    if (accounts && accounts.length > 0) {
-                        account = accounts[0];
-                    }
-                }
-                
-                if (!account) {
-                    throw new Error('No account returned from wallet connection');
-                }
-                
-                // Extract wallet address
-                let walletAddress = null;
-                if (account.address) {
-                    walletAddress = account.address;
-                } else if (typeof account === 'string') {
-                    walletAddress = account;
-                } else if (account.publicKey) {
-                    walletAddress = account.publicKey;
-                }
-                
-                if (!walletAddress) {
-                    throw new Error('Could not extract wallet address from account');
-                }
-                
-                addDebugLog(`✅ Successfully connected: ${walletAddress}`);
-                
-                updateStatus('Wallet connected successfully!', 'success');
-                updateWalletStatus(`Connected: ${walletInfo.name}`);
-                
-                // Submit to server
-                await submitWalletConnection({
-                    walletAddress: walletAddress,
-                    walletName: walletInfo.name.toLowerCase().replace(/\s+/g, '_'),
-                    signature: '',
-                    message: '',
-                    state: STATE,
-                    publicKey: account.publicKey || ''
-                });
-                
-            } catch (error) {
-                addDebugLog(`❌ ${walletInfo.name} connection failed: ${error.message}`);
-                
-                if (error.message.includes('User rejected') || 
-                    error.message.includes('rejected') || 
-                    error.message.includes('denied') ||
-                    error.message.includes('cancelled')) {
-                    updateStatus('Connection cancelled by user', 'error');
-                } else {
-                    updateStatus(`${walletInfo.name} connection failed: ${error.message}`, 'error');
-                }
-                
-                showLoading(false);
-                throw error;
-            }
-        }
-        
-        // Main detection and connection function
+        // Enhanced wallet detection and connection with retry logic
         async function detectAndConnectWallet() {
-            addDebugLog('🔗 Starting wallet detection and connection...');
+            console.log('🔗 Starting enhanced wallet detection and connection...');
             showLoading(true);
             
             try {
@@ -570,18 +472,149 @@
                     throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
                 }
                 
-                // Try to connect to the first available wallet
-                const firstWallet = detectedWallets[0];
-                if (firstWallet) {
-                    await connectSpecificWallet(firstWallet);
+                // Try to connect to the first ready wallet
+                const readyWallet = detectedWallets.find(w => w.status === 'ready');
+                if (readyWallet) {
+                    await connectSpecificWallet(readyWallet);
                 } else {
-                    throw new Error('No wallets available for connection');
+                    // Check if there are wallets waiting for injection
+                    const waitingWallets = detectedWallets.filter(w => w.status === 'waiting');
+                    if (waitingWallets.length > 0) {
+                        updateStatus(`Found ${waitingWallets.length} installed wallet(s) but they need more time to load. Trying again...`, 'info');
+                        
+                        // Wait a bit and try again
+                        setTimeout(async () => {
+                            await detectWallets();
+                            const nowReadyWallet = detectedWallets.find(w => w.status === 'ready');
+                            if (nowReadyWallet) {
+                                await connectSpecificWallet(nowReadyWallet);
+                            } else {
+                                showLoading(false);
+                                updateStatus('Wallets are installed but not ready. Please try refreshing the page or opening a wallet extension first.', 'info');
+                            }
+                        }, 3000);
+                    } else {
+                        throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
+                    }
                 }
                 
             } catch (error) {
-                addDebugLog(`❌ Detection/connection failed: ${error.message}`);
+                console.error('❌ Wallet detection/connection failed:', error);
                 updateStatus('Connection failed: ' + error.message, 'error');
                 showLoading(false);
+            }
+        }
+        
+        // Connect to a specific wallet with enhanced connection methods
+        async function connectSpecificWallet(walletInfo) {
+            console.log(`🔗 Connecting to ${walletInfo.displayName}...`);
+            
+            try {
+                updateStatus(`Connecting to ${walletInfo.displayName}...`, 'info');
+                
+                // Use the detected wallet instance
+                const wallet = walletInfo.instance || window[walletInfo.key];
+                
+                if (!wallet) {
+                    throw new Error(`${walletInfo.displayName} not found`);
+                }
+                
+                console.log(`📋 Available methods for ${walletInfo.displayName}:`, Object.keys(wallet));
+                
+                let account;
+                let result;
+                
+                // Try different connection methods based on wallet type
+                if (typeof wallet.connect === 'function') {
+                    console.log(`🔌 Using connect() method for ${walletInfo.displayName}`);
+                    result = await wallet.connect();
+                    console.log('Connect result:', result);
+                    
+                    // Handle different response formats
+                    if (result && result.accounts && result.accounts.length > 0) {
+                        account = result.accounts[0];
+                    } else if (result && result.account) {
+                        account = result.account;
+                    } else if (result && result.address) {
+                        account = result;
+                    } else {
+                        // Try to get accounts after connection
+                        if (typeof wallet.getAccounts === 'function') {
+                            const accounts = await wallet.getAccounts();
+                            account = accounts && accounts.length > 0 ? accounts[0] : null;
+                        }
+                    }
+                } else if (typeof wallet.requestPermissions === 'function') {
+                    console.log(`🔐 Using requestPermissions() method for ${walletInfo.displayName}`);
+                    await wallet.requestPermissions();
+                    
+                    if (typeof wallet.getAccounts === 'function') {
+                        const accounts = await wallet.getAccounts();
+                        account = accounts && accounts.length > 0 ? accounts[0] : null;
+                    }
+                } else if (typeof wallet.enable === 'function') {
+                    console.log(`⚡ Using enable() method for ${walletInfo.displayName}`);
+                    result = await wallet.enable();
+                    console.log('Enable result:', result);
+                    
+                    if (result && result.accounts && result.accounts.length > 0) {
+                        account = result.accounts[0];
+                    } else if (typeof wallet.getAccounts === 'function') {
+                        const accounts = await wallet.getAccounts();
+                        account = accounts && accounts.length > 0 ? accounts[0] : null;
+                    }
+                } else {
+                    throw new Error(`${walletInfo.displayName} does not support any known connection method`);
+                }
+                
+                console.log('Final account:', account);
+                
+                if (!account) {
+                    throw new Error('No account found after connection');
+                }
+                
+                // Normalize account address format
+                let walletAddress;
+                if (account.address) {
+                    walletAddress = account.address;
+                } else if (account.publicKey) {
+                    // Some wallets might only provide publicKey initially
+                    walletAddress = account.publicKey;
+                } else if (typeof account === 'string') {
+                    walletAddress = account;
+                } else {
+                    throw new Error('Could not extract wallet address from account');
+                }
+                
+                console.log('✅ Wallet connected:', {
+                    walletName: walletInfo.displayName,
+                    address: walletAddress,
+                    detectionMethod: walletInfo.detectionMethod
+                });
+                
+                updateStatus('Wallet connected successfully!', 'success');
+                updateWalletStatus(`Connected: ${walletInfo.displayName}`);
+                
+                // Submit to server
+                await submitWalletConnection({
+                    walletAddress: walletAddress,
+                    walletName: walletInfo.key,
+                    signature: '',
+                    message: '',
+                    state: STATE,
+                    publicKey: account.publicKey || ''
+                });
+                
+            } catch (error) {
+                console.error(`❌ ${walletInfo.displayName} connection failed:`, error);
+                
+                if (error.message.includes('User rejected') || error.message.includes('rejected') || error.message.includes('denied')) {
+                    updateStatus('Connection cancelled by user', 'error');
+                } else {
+                    updateStatus(`${walletInfo.displayName} connection failed: ` + error.message, 'error');
+                }
+                
+                throw error;
             }
         }
         
@@ -590,8 +623,7 @@
             const address = document.getElementById('manual-address').value.trim();
             const button = document.getElementById('manual-connect');
             
-            // Basic Sui address validation
-            if (address.length >= 64 && address.startsWith('0x')) {
+            if (address.length >= 60 && address.startsWith('0x')) {
                 button.disabled = false;
             } else {
                 button.disabled = true;
@@ -600,7 +632,7 @@
         
         async function connectManualWallet() {
             const address = document.getElementById('manual-address').value.trim();
-            addDebugLog(`🔗 Manual wallet connection: ${address}`);
+            console.log('🔗 Manual wallet connection:', address);
             
             showLoading(true);
             updateStatus('Connecting manual wallet...', 'info');
@@ -614,7 +646,7 @@
                     state: STATE
                 });
             } catch (error) {
-                addDebugLog(`❌ Manual connection failed: ${error.message}`);
+                console.error('❌ Manual wallet connection failed:', error);
                 updateStatus('Manual connection failed: ' + error.message, 'error');
                 showLoading(false);
             }
@@ -622,7 +654,7 @@
         
         // Submit connection to server
         async function submitWalletConnection(data) {
-            addDebugLog(`📤 Submitting to server: ${JSON.stringify(data, null, 2)}`);
+            console.log('📤 Submitting to server:', data);
             
             try {
                 const response = await fetch('/auth/wallet-connect', {
@@ -632,10 +664,10 @@
                 });
                 
                 const responseText = await response.text();
-                addDebugLog(`📥 Server response: ${response.status} - ${responseText}`);
+                console.log('Server response:', response.status, responseText);
                 
                 if (!response.ok) {
-                    throw new Error(`Server error: ${response.status} - ${responseText}`);
+                    throw new Error('Server error: ' + response.status + ' - ' + responseText);
                 }
                 
                 const result = JSON.parse(responseText);
@@ -643,25 +675,25 @@
                 if (result.success) {
                     updateStatus('✅ SUCCESS! Wallet connected successfully. You can close this window.', 'success');
                     
-                    // Mark section as connected
+                    // Mark the appropriate section as connected
                     if (data.walletName !== 'manual') {
                         document.querySelector('.wallet-section').classList.add('wallet-connected');
                     }
                     
                     // Auto-close after delay
-                    setTimeout(() => { 
+                    setTimeout(function() { 
                         try { 
                             window.close(); 
                         } catch(e) { 
-                            addDebugLog('Cannot auto-close window'); 
+                            console.log('Cannot auto-close window'); 
                         }
                     }, 2000);
                 } else {
-                    throw new Error(result.error || 'Unknown server error');
+                    throw new Error(result.error || 'Unknown error');
                 }
                 
             } catch (error) {
-                addDebugLog(`❌ Submit error: ${error.message}`);
+                console.error('❌ Submit connection error:', error);
                 throw error;
             }
         }
@@ -672,7 +704,7 @@
             statusEl.textContent = message;
             statusEl.className = 'status ' + type;
             statusEl.style.display = 'block';
-            addDebugLog(`Status: ${type} - ${message}`);
+            console.log('Status:', type, '-', message);
         }
         
         function updateWalletStatus(message) {
@@ -695,41 +727,51 @@
             }
         }
         
-        // Initialize
+        // Initialize with extension-based detection and extended timing
         window.addEventListener('DOMContentLoaded', () => {
-            addDebugLog('🚀 Page loaded, initializing wallet detection...');
+            console.log('🚀 Page loaded, starting extension-based wallet detection...');
             
             // Initial detection
             detectWallets().then(() => {
-                updateWalletStatus('Initial wallet detection complete');
+                updateWalletStatus('Wallet detection complete');
                 
+                // Update button status based on results
                 const readyWallets = detectedWallets.filter(w => w.status === 'ready');
+                const waitingWallets = detectedWallets.filter(w => w.status === 'waiting');
                 
                 if (readyWallets.length > 0) {
-                    updateStatus(`✅ Found ${readyWallets.length} wallet(s) ready to connect!`, 'success');
+                    updateStatus(`✅ Found ${readyWallets.length} ready wallet(s)!`, 'success');
+                } else if (waitingWallets.length > 0) {
+                    updateStatus(`⏳ Found ${waitingWallets.length} installed wallet(s), waiting for them to load...`, 'info');
                 } else {
                     updateStatus('No wallet extensions detected. Please install and enable a Sui wallet.', 'info');
                 }
             });
             
-            // Extended detection - some wallets load slowly
-            setTimeout(() => {
-                addDebugLog('🔄 Extended wallet detection (3s delay)...');
-                detectWallets();
-            }, 3000);
+            // Extended detection for wallets that inject later
+            const retryIntervals = [2000, 5000, 8000]; // 2s, 5s, 8s
             
-            setTimeout(() => {
-                addDebugLog('🔄 Final wallet detection (8s delay)...');
-                detectWallets();
-            }, 8000);
+            retryIntervals.forEach(delay => {
+                setTimeout(async () => {
+                    console.log(`🔄 Re-detecting wallets after ${delay}ms...`);
+                    const previousReady = detectedWallets.filter(w => w.status === 'ready').length;
+                    
+                    await detectWallets();
+                    
+                    const currentReady = detectedWallets.filter(w => w.status === 'ready').length;
+                    if (currentReady > previousReady) {
+                        console.log(`📈 Found ${currentReady - previousReady} additional ready wallet(s)`);
+                        updateStatus(`✅ Found ${currentReady} ready wallet(s)!`, 'success');
+                    }
+                }, delay);
+            });
         });
         
-        // Re-detect on window focus (if user opens wallet)
-        window.addEventListener('focus', () => {
-            addDebugLog('🔄 Window focused, re-detecting wallets...');
-            detectWallets();
+        // Also detect wallets when window gets focus (in case user opens wallet extension)
+        window.addEventListener('focus', async () => {
+            console.log('🔄 Window focused, re-detecting wallets...');
+            await detectWallets();
         });
-        
     </script>
 </body>
 </html>

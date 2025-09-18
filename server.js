@@ -88,6 +88,27 @@ function loadTemplate(templateName, replacements = {}) {
   }
 }
 
+// Add this BEFORE app.listen(), not after
+// Serve static files from public directory
+app.use('/public', express.static(join(__dirname, 'public')));
+
+// React-based wallet connection page  
+app.get("/wallet-connect-react", (req, res) => {
+  const { state } = req.query;
+  
+  if (!state) {
+    return res.status(400).send("Missing state parameter");
+  }
+
+  // Load the React-based HTML file
+  const html = loadTemplate('wallet-connect-react.html', {
+    STATE: state
+  });
+
+  res.send(html);
+});
+
+
 // NEW: Wallet connection page using external template
 app.get("/wallet-connect", (req, res) => {
   const { state } = req.query;
@@ -685,6 +706,8 @@ app.get("/ping", async (req, res) => {
     });
   }
 });
+
+
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
