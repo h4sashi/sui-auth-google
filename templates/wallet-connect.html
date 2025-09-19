@@ -269,7 +269,7 @@
                 name: 'Slush Wallet',
                 windowKeys: ['slush', 'slushWallet', '__slush__', 'suiWallet', 'sui', '__sui__'],
                 chromeExtensionId: 'opcgpfmipidbgpenhmajoajpbobppdil',
-                icon: 'https://slush.app/favicon.ico',
+                icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTAgMjRDMCAxMC43NDUyIDEwLjc0NTIgMCAyNCAwQzM3LjI1NDggMCA0OCAxMC43NDUyIDQ4IDI0QzQ4IDM3LjI1NDggMzcuMjU0OCA0OCAyNCA0OEMxMC43NDUyIDQ4IDAgMzcuMjU0OCAwIDI0WiIgZmlsbD0iIzBDMEExRiIvPgo8cGF0aCBkPSJNMTMuMTM1OCAzMi4xMDg1QzE0LjE3MDEgMzUuOTY4MyAxOC4wMzMxIDM5LjQ2MjQgMjYuMDI1NSAzNy4zMjA4QzMzLjY1MTUgMzUuMjc3NCAzOC40MzA5IDI5LjAwNCAzNy4xOTE2IDI0LjM3ODlDMzYuNzYzNiAyMi43ODE3IDM1LjQ3NDYgMjEuNzAwNiAzMy40ODcyIDIxLjg3NjVMMTUuNzE2NSAyMy4zNTcyQzE0LjU5NzMgMjMuNDQzIDE0LjA4NDIgMjMuMjU5NiAxMy43ODgxIDIyLjU1NDNDMTMuNTAxIDIxLjg4MjMgMTMuNjY0NiAyMS4xNjA5IDE1LjAxNjMgMjAuNDc3N0wyOC41NDAxIDEzLjUzNzRDMjkuNTc2NyAxMy4wMSAzMC4yNjcxIDEyLjc4OTMgMzAuODk4IDEzLjAxMjZDMzEuMjkzNCAxMy4xNTYzIDMxLjU1MzggMTMuNzI4NCAzMS4zMTQ3IDE0LjQzNDRMMzAuNDM3OCAxNy4wMjMyQzI5LjM2MTcgMjAuMjAwMiAzMS42NjUzIDIwLjkzODIgMzIuOTY0MSAyMC41OTAyQzM0LjkyODkgMjAuMDYzNyAzNS4zOTExIDE4LjE5MjMgMzQuNzU4MSAxNS44Mjk5QzMzLjE1MzMgOS44NDA1NCAyNi43OTkgOC45MDQxMSAyMS4wMzc4IDEwLjQ0NzhDMTUuMTc2NyAxMi4wMTgzIDEwLjA5NiAxNi43Njc2IDExLjY0NzQgMjIuNTU3M0MxMi4wMTI5IDIzLjkyMTYgMTMuMjY4NyAyNS4wMTE2IDE0LjcyMzIgMjQuOTc4NUwxNi45NDM4IDI0Ljk3MzFDMTcuNDAwNCAyNC45NjI1IDE3LjIzNiAyNSAxOC4xMTcgMjQuOTI3MUMxOC45OTggMjQuODU0MSAyMS4zNTA5IDI0LjU2NDYgMjEuMzUwOSAyNC41NjQ2TDMyLjg5NjIgMjMuMjU4TDMzLjE5MzcgMjMuMjE0OEMzMy44Njg5IDIzLjA5OTcgMzQuMzc5MiAyMy4yNzUgMzQuODEwNiAyNC4wMTgzQzM1LjQ1NjMgMjUuMTMwNCAzNC40NzEyIDI1Ljk2OTEgMzMuMjkyIDI2Ljk3MzFDMzMuMjYwNSAyNyAzMy4yMjg4IDI3LjAyNyAzMy4xOTcgMjcuMDU0MUwyMy4wNDgyIDM1LjgwMDVDMjEuMzA4NyAzNy4zMDA4IDIwLjA4NjcgMzYuNzM2NyAxOS42NTg4IDM1LjEzOTVMMTguMTQzMSAyOS40ODI5QzE3Ljc2ODcgMjguMDg1NCAxNi40MDQxIDI2Ljk4ODkgMTQuODA1NiAyNy40MTcyQzEyLjgwNzUgMjcuOTUyNiAxMi42NDU1IDMwLjI3ODQgMTMuMTM1OCAzMi4xMDg1WiIgZmlsbD0iI0ZCRkFGRiIvPgo8L3N2Zz4K',
                 detectMethods: ['window', 'extension', 'standard'],
                 aliases: ['Sui Wallet'] // Since Slush is rebranded Sui Wallet
             },
@@ -403,12 +403,66 @@
             return wallet;
         }
         
+        function debugWalletRegistration() {
+            console.log('=== WALLET DEBUG INFO ===');
+            console.log('Window properties containing "slush":', 
+                Object.keys(window).filter(key => key.toLowerCase().includes('slush'))
+            );
+            console.log('Window properties containing "wallet":', 
+                Object.keys(window).filter(key => key.toLowerCase().includes('wallet'))
+            );
+            console.log('navigator.wallet:', window.navigator?.wallet);
+            console.log('WalletStandard:', window.WalletStandard);
+            console.log('walletStandard:', window.walletStandard);
+            
+            // Check if Slush wallet is already registered
+            if (window.navigator?.wallet) {
+                try {
+                    const wallets = window.navigator.wallet.getWallets?.() || [];
+                    console.log('Registered wallets:', wallets.map(w => ({ name: w.name, id: w.id })));
+                } catch (e) {
+                    console.log('Error getting registered wallets:', e);
+                }
+            }
+        }
+        
         // Method 1: Enhanced Window Object Detection with Multi-Chain Support
         async function detectWindowWallets() {
             log('🔍 Scanning window objects...');
             let found = 0;
             
-            // First, let's do a comprehensive scan of ALL window properties to catch any we might miss
+            // First check for wallet standard registration
+            if (window.navigator?.wallet) {
+                try {
+                    const getWallets = window.navigator.wallet.getWallets || window.navigator.wallet.get;
+                    if (typeof getWallets === 'function') {
+                        const standardWallets = getWallets();
+                        log(`Found ${standardWallets.length} wallets via navigator.wallet`);
+                        
+                        for (const wallet of standardWallets) {
+                            if (wallet.name === 'Slush' || 
+                                wallet.id === 'com.mystenlabs.suiwallet' ||
+                                wallet.name?.toLowerCase().includes('slush')) {
+                                
+                                addDetectedWallet('Slush Wallet', {
+                                    name: 'Slush Wallet',
+                                    version: wallet.version || 'standard',
+                                    wallet: wallet,
+                                    detectionMethod: 'standard',
+                                    chains: wallet.chains,
+                                    features: Object.keys(wallet.features || {}),
+                                    icon: wallet.icon
+                                });
+                                found++;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    log(`Error accessing navigator.wallet: ${e.message}`);
+                }
+            }
+            
+            // Then, let's do a comprehensive scan of ALL window properties to catch any we might miss
             log('🔍 Comprehensive window property scan:');
             const windowProps = Object.getOwnPropertyNames(window).filter(prop => {
                 const obj = window[prop];
@@ -480,7 +534,7 @@
             return 0;
         }
         
-        // Method 3: Wallet Standard API Detection (Enhanced)
+        // Method 3: Enhanced Wallet Standard API Detection
         async function detectWalletStandardAPI() {
             log('🔍 Scanning Wallet Standard API...');
             let found = 0;
@@ -488,10 +542,10 @@
             try {
                 // Multiple possible API locations
                 const possibleAPIs = [
+                    () => window.navigator?.wallet?.getWallets?.(),
                     () => window.WalletStandard?.getWallets?.(),
                     () => window.walletStandard?.getWallets?.(),
                     () => window.MysuiWalletStandard?.getWallets?.(),
-                    () => window.navigator?.wallets?.getWallets?.(),
                     () => window.sui?.getWallets?.()
                 ];
                 
@@ -503,20 +557,46 @@
                             log(`Found ${standardWallets.length} wallets via Wallet Standard`);
                             
                             for (const wallet of standardWallets) {
-                                if (isSuiWallet(wallet)) {
-                                    addDetectedWallet(wallet.name, {
-                                        name: wallet.name,
+                                // Specifically look for Slush wallet
+                                if (wallet.name === 'Slush' || 
+                                    wallet.id === 'com.mystenlabs.suiwallet' ||
+                                    wallet.name?.toLowerCase().includes('slush') ||
+                                    isSuiWallet(wallet)) {
+                                    
+                                    addDetectedWallet(wallet.name || 'Slush Wallet', {
+                                        name: wallet.name || 'Slush Wallet',
                                         version: wallet.version || 'standard',
                                         wallet: wallet,
                                         detectionMethod: 'standard',
                                         chains: wallet.chains,
-                                        features: Object.keys(wallet.features)
+                                        features: Object.keys(wallet.features || {}),
+                                        icon: wallet.icon
                                     });
                                     log(`✅ Found ${wallet.name} via Wallet Standard`);
                                     found++;
                                 }
                             }
-                            break;
+                            if (found > 0) break;
+                        } else if (walletsApi && Array.isArray(walletsApi)) {
+                            // Direct array of wallets
+                            log(`Found ${walletsApi.length} wallets via direct array`);
+                            for (const wallet of walletsApi) {
+                                if (wallet.name === 'Slush' || 
+                                    wallet.id === 'com.mystenlabs.suiwallet' ||
+                                    wallet.name?.toLowerCase().includes('slush')) {
+                                    
+                                    addDetectedWallet('Slush Wallet', {
+                                        name: 'Slush Wallet',
+                                        version: wallet.version || 'standard',
+                                        wallet: wallet,
+                                        detectionMethod: 'standard',
+                                        chains: wallet.chains,
+                                        features: Object.keys(wallet.features || {}),
+                                        icon: wallet.icon
+                                    });
+                                    found++;
+                                }
+                            }
                         }
                     } catch (e) {
                         // Try next API
@@ -538,7 +618,7 @@
             const features = wallet.features || {};
             
             // Check name
-            if (name.includes('sui') || name.includes('suiet') || name.includes('martian')) {
+            if (name.includes('sui') || name.includes('suiet') || name.includes('martian') || name.includes('slush')) {
                 return true;
             }
             
@@ -661,18 +741,6 @@
                                 account = connectionResult?.account || connectionResult;
                             }
                         }
-                        // Method 3: Try standard connect then get accounts
-                        else if (typeof wallet.connect === 'function') {
-                            log('Using wallet.connect() then checking accounts');
-                            await wallet.connect();
-                            
-                            if (wallet.accounts && wallet.accounts.length > 0) {
-                                account = wallet.accounts[0];
-                            } else if (typeof wallet.getAccounts === 'function') {
-                                const accounts = await wallet.getAccounts();
-                                account = accounts?.[0];
-                            }
-                        }
                         
                         // If account is still not found, try alternative methods
                         if (!account && wallet._parentWallet) {
@@ -696,30 +764,12 @@
                         throw nightlyError;
                     }
                 }
-                // Handle multi-chain wallets (excluding Nightly which has special handling above)
-                else if (wallet._isMultiChain && wallet._parentWallet && config.name !== 'Nightly Wallet') {
-                    log('Using multi-chain wallet connection');
-                    const parentWallet = wallet._parentWallet;
-                    
-                    // Try Sui-specific connection first
-                    if (wallet.features && wallet.features['standard:connect']) {
-                        const connectFeature = wallet.features['standard:connect'];
-                        const result = await connectFeature.connect();
-                        account = result?.accounts?.[0] || wallet.accounts?.[0];
-                    }
-                    // Fallback to parent wallet connection
-                    else if (typeof parentWallet.connect === 'function') {
-                        const result = await parentWallet.connect();
-                        // For Martian, the result might be in different formats
-                        account = result?.accounts?.[0] || result?.account || result;
-                    }
-                }
                 // Handle Wallet Standard connection
                 else if (config.detectionMethod === 'standard' && wallet.features?.['standard:connect']) {
                     log('Using Wallet Standard connection');
                     const connectFeature = wallet.features['standard:connect'];
-                    await connectFeature.connect();
-                    account = wallet.accounts?.[0];
+                    const result = await connectFeature.connect();
+                    account = result?.accounts?.[0] || wallet.accounts?.[0];
                 } 
                 // Handle direct wallet connection
                 else if (wallet) {
@@ -804,7 +854,7 @@
             }
         }
         
-        // Main scanning function
+        // Main scanning function with enhanced event listeners
         async function scanForAllWallets() {
             log('🚀 Starting comprehensive wallet scan...');
             showLoading(true);
@@ -818,6 +868,7 @@
                 debugLogs = [];
                 
                 log('=== WALLET DETECTION STARTED ===');
+                debugWalletRegistration();
                 
                 // Run all detection methods
                 const results = await Promise.allSettled([
@@ -994,16 +1045,47 @@
             }
         }
         
-        // Initialize everything
+        // Initialize everything with enhanced event listeners
         window.addEventListener('DOMContentLoaded', () => {
             log('🚀 Wallet detection system initializing...');
             
             updateStatus('Advanced wallet detection system loaded. Click "Scan for Wallets" to begin.', 'info');
             
-            // Auto-scan after letting extensions load
+            // Add event listeners for wallet standard events
+            window.addEventListener('wallet-standard:app-ready', (event) => {
+                log('Wallet Standard app-ready event fired');
+                setTimeout(() => {
+                    scanForAllWallets();
+                }, 100);
+            });
+
+            // Listen for the register-wallet event
+            window.addEventListener('wallet-standard:register-wallet', (event) => {
+                log('New wallet registered via wallet-standard:register-wallet');
+                setTimeout(() => {
+                    scanForAllWallets();
+                }, 100);
+            });
+            
+            // Multiple scan attempts with increased intervals
             setTimeout(() => {
                 scanForAllWallets();
+            }, 1000);
+            
+            // Additional scans at longer intervals for late-loading extensions
+            setTimeout(() => {
+                if (detectedWallets.size === 0) {
+                    log('🔄 No wallets found after 3s, rescanning...');
+                    scanForAllWallets();
+                }
             }, 3000);
+            
+            setTimeout(() => {
+                if (detectedWallets.size === 0) {
+                    log('🔄 No wallets found after 5s, rescanning...');
+                    scanForAllWallets();
+                }
+            }, 5000);
         });
         
         // Re-scan when page gains focus
@@ -1014,13 +1096,13 @@
             }
         });
         
-        // Periodic re-scan for late-loading extensions
+        // Periodic re-scan for late-loading extensions with reduced frequency
         setInterval(() => {
             if (detectedWallets.size === 0) {
                 log('🔄 Periodic wallet check...');
                 scanForAllWallets();
             }
-        }, 15000);
+        }, 10000); // Reduced from 15s to 10s
     </script>
 </body>
 </html>
