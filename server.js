@@ -105,6 +105,8 @@ app.get("/wallet-connect", (req, res) => {
 });
 
 // NEW: Unified wallet connection endpoint
+// Replace your /auth/wallet-connect endpoint with this fixed version
+
 app.post("/auth/wallet-connect", async (req, res) => {
   console.log("🔗 Wallet connection request received");
   console.log("Request body:", JSON.stringify(req.body, null, 2));
@@ -147,6 +149,29 @@ app.post("/auth/wallet-connect", async (req, res) => {
     
     console.log(`✅ Valid wallet address: ${walletAddress}`);
     console.log(`🔗 Wallet connecting: ${walletName || 'Unknown'} - ${walletAddress}`);
+    
+    // FIX: Properly map wallet names to auth methods
+    function getAuthMethod(walletName) {
+      if (!walletName || walletName === 'manual') {
+        return 'manual_wallet';
+      }
+      
+      // Map all known wallet extensions to a consistent auth method
+      const walletMapping = {
+        'suiet': 'wallet_extension',
+        'martian': 'wallet_extension', 
+        'glass': 'wallet_extension',
+        'slush': 'wallet_extension',
+        'suiWallet': 'wallet_extension',
+        'ethos': 'wallet_extension',
+        'manual': 'manual_wallet'
+      };
+      
+      return walletMapping[walletName] || 'wallet_extension';
+    }
+    
+    const authMethod = getAuthMethod(walletName);
+    console.log(`📋 Auth method mapped: ${walletName} -> ${authMethod}`);
     
     // Check blockchain status
     let blockchainInfo = {
@@ -210,7 +235,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
         .from("user_profiles")
         .update({ 
           updated_at: new Date().toISOString(),
-          auth_method: walletName === 'manual' ? 'manual_wallet' : 'suiet_wallet'
+          auth_method: authMethod // Use the properly mapped auth method
         })
         .eq("id", existingProfile.id)
         .select()
@@ -238,10 +263,12 @@ app.post("/auth/wallet-connect", async (req, res) => {
         picture: null,
         user_salt: null,
         sui_address: walletAddress,
-        auth_method: walletName === 'manual' ? 'manual_wallet' : 'suiet_wallet',
+        auth_method: authMethod, // Use the properly mapped auth method
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+      
+      console.log("📋 Profile data to insert:", profileData);
       
       const { data: inserted, error: insertError } = await supabase
         .from("user_profiles")
@@ -272,7 +299,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
       name: finalProfile.name,
       picture: finalProfile.picture,
       suiWallet: walletAddress,
-      authMethod: walletName === 'manual' ? 'manual_wallet' : 'suiet_wallet',
+      authMethod: authMethod, // Use consistent auth method
       profileId: finalProfile.id,
       needsUsernameSetup: needsUsername
     };
@@ -297,7 +324,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
         id: finalProfile.id,
         name: finalProfile.name,
         suiWallet: walletAddress,
-        authMethod: walletName === 'manual' ? 'manual_wallet' : 'suiet_wallet',
+        authMethod: authMethod, // Use consistent auth method
         profileId: finalProfile.id,
         needsUsernameSetup: needsUsername
       }
