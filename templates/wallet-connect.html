@@ -256,7 +256,7 @@
         const detectedWallets = new Map();
         let debugLogs = [];
         
-        // Enhanced wallet detection configuration
+        // Enhanced wallet detection configuration with fixed Nightly support
         const WALLET_CONFIGS = {
             suiet: {
                 name: 'Suiet Wallet',
@@ -298,7 +298,11 @@
                 windowKeys: ['nightly', 'nightlyWallet', '__nightly__'],
                 chromeExtensionId: null,
                 icon: 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4NCjwhLS0gR2VuZXJhdG9yOiBBZG9iZSBJbGx1c3RyYXRvciAyOC4wLjAsIFNWRyBFeHBvcnQgUGx1Zy1JbiAuIFNWRyBWZXJzaW9uOiA2LjAwIEJ1aWxkIDApICAtLT4NCjxzdmcgdmVyc2lvbj0iMS4xIiBpZD0iV2Fyc3R3YV8xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB4PSIwcHgiIHk9IjBweCINCgkgdmlld0JveD0iMCAwIDg1MS41IDg1MS41IiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA4NTEuNSA4NTEuNTsiIHhtbDpzcGFjZT0icHJlc2VydmUiPg0KPHN0eWxlIHR5cGU9InRleHQvY3NzIj4NCgkuc3Qwe2ZpbGw6IzYwNjdGOTt9DQoJLnN0MXtmaWxsOiNGN0Y3Rjc7fQ0KPC9zdHlsZT4NCjxnPg0KCTxnIGlkPSJXYXJzdHdhXzJfMDAwMDAwMTQ2MDk2NTQyNTMxODA5NDY0NjAwMDAwMDg2NDc4NTIwMDIxMTY5MTg2ODhfIj4NCgkJPHBhdGggY2xhc3M9InN0MCIgZD0iTTEyNCwwaDYwMy42YzY4LjUsMCwxMjQsNTUuNSwxMjQsMTI0djYwMy42YzAsNjguNS01NS41LDEyNC0xMjQsMTI0SDEyNGMtNjguNSwwLTEyNC01NS41LTEyNC0xMjRWMTI0DQoJCQlDMCw1NS41LDU1LjUsMCwxMjQsMHoiLz4NCgk8L2c+DQoJPGcgaWQ9IldhcnN0d2FfMyI+DQoJCTxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik02MjMuNSwxNzAuM2MtMzcuNCw1Mi4yLTg0LjIsODguNC0xMzkuNSwxMTIuNmMtMTkuMi01LjMtMzguOS04LTU4LjMtNy44Yy0xOS40LTAuMi0zOS4xLDIuNi01OC4zLDcuOA0KCQkJYy01NS4zLTI0LjMtMTAyLjEtNjAuMy0xMzkuNS0xMTIuNmMtMTEuMywyOC40LTU0LjgsMTI2LjQtMi42LDI2My40YzAsMC0xNi43LDcxLjUsMTQsMTMyLjljMCwwLDQ0LjQtMjAuMSw3OS43LDguMg0KCQkJYzM2LjksMjkuOSwyNS4xLDU4LjcsNTEuMSw4My41YzIyLjQsMjIuOSw1NS43LDIyLjksNTUuNywyMi45czMzLjMsMCw1NS43LTIyLjhjMjYtMjQuNywxNC4zLTUzLjUsNTEuMS04My41DQoJCQljMzUuMi0yOC4zLDc5LjctOC4yLDc5LjctOC4yYzMwLjYtNjEuNCwxNC0xMzIuOSwxNC0xMzIuOUM2NzguMywyOTYuNyw2MzQuOSwxOTguNyw2MjMuNSwxNzAuM3ogTTI1My4xLDQxNC44DQoJCQljLTI4LjQtNTguMy0zNi4yLTEzOC4zLTE4LjMtMjAxLjVjMjMuNyw2MCw1NS45LDg2LjksOTQuMiwxMTUuM0MzMTIuOCwzNjIuMywyODIuMywzOTQuMSwyNTMuMSw0MTQuOHogTTMzNC44LDUxNy41DQoJCQljLTIyLjQtOS45LTI3LjEtMjkuNC0yNy4xLTI5LjRjMzAuNS0xOS4yLDc1LjQtNC41LDc2LjgsNDAuOUMzNjAuOSw1MTQuNywzNTMsNTI1LjQsMzM0LjgsNTE3LjV6IE00MjUuNyw2NzguNw0KCQkJYy0xNiwwLTI5LTExLjUtMjktMjUuNnMxMy0yNS42LDI5LTI1LjZzMjksMTEuNSwyOSwyNS42QzQ1NC43LDY2Ny4zLDQ0MS43LDY3OC43LDQyNS43LDY3OC43eiBNNTE2LjcsNTE3LjUNCgkJCWMtMTguMiw4LTI2LTIuOC00OS43LDExLjVjMS41LTQ1LjQsNDYuMi02MC4xLDc2LjgtNDAuOUM1NDMuOCw0ODgsNTM5LDUwNy42LDUxNi43LDUxNy41eiBNNTk4LjMsNDE0LjgNCgkJCWMtMjkuMS0yMC43LTU5LjctNTIuNC03Ni04Ni4yYzM4LjMtMjguNCw3MC42LTU1LjQsOTQuMi0xMTUuM0M2MzQuNiwyNzYuNSw2MjYuOCwzNTYuNiw1OTguMyw0MTQuOHoiLz4NCgk8L2c+DQo8L2c+DQo8L3N2Zz4NCg==',
-                detectMethods: ['window', 'standard']
+                detectMethods: ['window', 'standard'],
+                connectionOptions: {
+                    supportedChains: ['sui:mainnet', 'sui:testnet', 'sui:devnet'],
+                    requiresChainSpec: true
+                }
             }
         };
         
@@ -314,8 +318,23 @@
             debugEl.scrollTop = debugEl.scrollHeight;
         }
         
+        // Enhanced Nightly Wallet detection
         function isSuiWalletObject(wallet, windowKey) {
             if (!wallet) return false;
+            
+            const windowName = windowKey.toLowerCase();
+            
+            // Special handling for Nightly Wallet
+            if (windowName.includes('nightly')) {
+                log(`🌙 Checking Nightly Wallet structure for ${windowKey}`);
+                log(`Nightly has sui property: ${!!wallet.sui}`);
+                log(`Nightly has connect method: ${typeof wallet.connect === 'function'}`);
+                
+                // Nightly has sui property and connect method
+                if (wallet.sui || typeof wallet.connect === 'function') {
+                    return true;
+                }
+            }
             
             // Check for multi-chain wallet with Sui support
             if (wallet.sui && typeof wallet.sui === 'object') {
@@ -334,7 +353,6 @@
             }
             
             // Check for Sui-specific properties
-            const windowName = windowKey.toLowerCase();
             if (windowName.includes('sui') || windowName.includes('suiet') || 
                 windowName.includes('martian') || windowName.includes('nightly')) {
                 return true;
@@ -496,6 +514,196 @@
             }
         }
         
+        // Enhanced wallet connection function with proper Nightly Wallet support
+        async function connectWallet(config) {
+            log(`🔗 Connecting to ${config.name}...`);
+            
+            try {
+                updateStatus(`Connecting to ${config.name}...`, 'info');
+                showLoading(true);
+                
+                const wallet = config.wallet;
+                let account;
+                let connectionResult;
+                
+                // Enhanced Nightly Wallet specific handling
+                if (config.name === 'Nightly Wallet') {
+                    log('🌙 Using Nightly Wallet specific connection flow');
+                    
+                    // Debug Nightly wallet structure
+                    log('Nightly wallet object keys:', Object.getOwnPropertyNames(wallet).filter(prop => typeof wallet[prop] === 'function'));
+                    if (wallet.sui) {
+                        log('Nightly wallet.sui keys:', Object.getOwnPropertyNames(wallet.sui).filter(prop => typeof wallet.sui[prop] === 'function'));
+                    }
+                    
+                    try {
+                        // Method 1: Try Nightly's sui property first
+                        if (wallet.sui && typeof wallet.sui.connect === 'function') {
+                            log('Using wallet.sui.connect()');
+                            connectionResult = await wallet.sui.connect();
+                            account = connectionResult?.accounts?.[0] || connectionResult?.account;
+                        }
+                        // Method 2: Try direct connect with Sui chain specification
+                        else if (typeof wallet.connect === 'function') {
+                            log('Using wallet.connect() with chain specification');
+                            connectionResult = await wallet.connect(['sui:testnet', 'sui:mainnet', 'sui:devnet']);
+                            
+                            log('Nightly connection result:', connectionResult);
+                            
+                            // Nightly might return accounts in different formats
+                            if (connectionResult?.accounts) {
+                                // Look for Sui accounts specifically
+                                const suiAccounts = connectionResult.accounts.filter(acc => 
+                                    acc.chains?.some(chain => chain.startsWith('sui:'))
+                                );
+                                account = suiAccounts?.[0] || connectionResult.accounts?.[0];
+                            } else {
+                                account = connectionResult?.account || connectionResult;
+                            }
+                        }
+                        // Method 3: Try standard connect then get accounts
+                        else if (typeof wallet.connect === 'function') {
+                            log('Using wallet.connect() then checking accounts');
+                            await wallet.connect();
+                            
+                            if (wallet.accounts && wallet.accounts.length > 0) {
+                                account = wallet.accounts[0];
+                            } else if (typeof wallet.getAccounts === 'function') {
+                                const accounts = await wallet.getAccounts();
+                                account = accounts?.[0];
+                            }
+                        }
+                        
+                        // If account is still not found, try alternative methods
+                        if (!account && wallet._parentWallet) {
+                            log('Trying parent wallet connection');
+                            const parentWallet = wallet._parentWallet;
+                            if (typeof parentWallet.connect === 'function') {
+                                connectionResult = await parentWallet.connect(['sui:testnet']);
+                                account = connectionResult?.accounts?.[0] || connectionResult?.account;
+                            }
+                        }
+                        
+                        log('Nightly final connection result:', {
+                            connectionResult: connectionResult ? 'received' : 'null',
+                            account: account ? 'found' : 'not found',
+                            accountAddress: account?.address || 'no address',
+                            accountType: typeof account
+                        });
+                        
+                    } catch (nightlyError) {
+                        log(`Nightly-specific connection failed: ${nightlyError.message}`);
+                        throw nightlyError;
+                    }
+                }
+                // Handle multi-chain wallets (excluding Nightly which has special handling above)
+                else if (wallet._isMultiChain && wallet._parentWallet && config.name !== 'Nightly Wallet') {
+                    log('Using multi-chain wallet connection');
+                    const parentWallet = wallet._parentWallet;
+                    
+                    // Try Sui-specific connection first
+                    if (wallet.features && wallet.features['standard:connect']) {
+                        const connectFeature = wallet.features['standard:connect'];
+                        const result = await connectFeature.connect();
+                        account = result?.accounts?.[0] || wallet.accounts?.[0];
+                    }
+                    // Fallback to parent wallet connection
+                    else if (typeof parentWallet.connect === 'function') {
+                        const result = await parentWallet.connect();
+                        // For Martian, the result might be in different formats
+                        account = result?.accounts?.[0] || result?.account || result;
+                    }
+                }
+                // Handle Wallet Standard connection
+                else if (config.detectionMethod === 'standard' && wallet.features?.['standard:connect']) {
+                    log('Using Wallet Standard connection');
+                    const connectFeature = wallet.features['standard:connect'];
+                    await connectFeature.connect();
+                    account = wallet.accounts?.[0];
+                } 
+                // Handle direct wallet connection
+                else if (wallet) {
+                    log('Using direct wallet connection');
+                    
+                    if (typeof wallet.connect === 'function') {
+                        const result = await wallet.connect();
+                        account = result?.accounts?.[0] || result?.account || result;
+                    } else if (typeof wallet.requestPermissions === 'function') {
+                        await wallet.requestPermissions();
+                        if (typeof wallet.getAccounts === 'function') {
+                            const accounts = await wallet.getAccounts();
+                            account = accounts?.[0];
+                        }
+                    } else if (typeof wallet.enable === 'function') {
+                        const result = await wallet.enable();
+                        account = result?.accounts?.[0] || result;
+                    } else {
+                        throw new Error('No supported connection method found');
+                    }
+                }
+                
+                // Enhanced account validation with detailed logging
+                if (!account) {
+                    log('❌ No account object received');
+                    throw new Error('No account received from wallet');
+                }
+                
+                log('Account object received:', {
+                    type: typeof account,
+                    hasAddress: !!account.address,
+                    hasPublicKey: !!account.publicKey,
+                    isString: typeof account === 'string',
+                    accountKeys: typeof account === 'object' ? Object.keys(account) : 'not object'
+                });
+                
+                // Extract address from various possible formats
+                let walletAddress = account.address || account.publicKey || account;
+                
+                // Handle case where account might be a string address
+                if (typeof account === 'string' && account.startsWith('0x')) {
+                    walletAddress = account;
+                }
+                
+                // Handle nested address structure
+                if (!walletAddress && account.address) {
+                    walletAddress = account.address;
+                }
+                
+                // Additional validation for address format
+                if (!walletAddress || typeof walletAddress !== 'string' || !walletAddress.startsWith('0x')) {
+                    log('❌ Invalid wallet address format:', {
+                        walletAddress,
+                        type: typeof walletAddress,
+                        account: account
+                    });
+                    throw new Error('Invalid wallet address format received');
+                }
+                
+                // Final address validation
+                if (walletAddress.length < 60) {
+                    log('❌ Wallet address too short:', walletAddress);
+                    throw new Error('Wallet address appears to be invalid (too short)');
+                }
+                
+                log(`✅ Connection successful: ${walletAddress}`);
+                
+                await submitWalletConnection({
+                    walletAddress: walletAddress,
+                    walletName: config.name.toLowerCase().replace(/\s+/g, '_'),
+                    signature: '',
+                    message: '',
+                    state: STATE,
+                    publicKey: account.publicKey || ''
+                });
+                
+            } catch (error) {
+                log(`❌ ${config.name} connection failed: ${error.message}`);
+                log('Error details:', error);
+                updateStatus(`${config.name} connection failed: ` + error.message, 'error');
+                showLoading(false);
+            }
+        }
+        
         // Main scanning function
         async function scanForAllWallets() {
             log('🚀 Starting comprehensive wallet scan...');
@@ -564,6 +772,7 @@
                         • <a href="https://chrome.google.com/webstore/detail/suiet-sui-wallet/khpkpbbcccdmmclmpigdgddabeilkdpd" target="_blank">Suiet Wallet</a>
                         <br>• <a href="https://chrome.google.com/webstore/detail/sui-wallet/opcgpfmipidbgpenhmajoajpbobppdil" target="_blank">Sui Wallet (Official)</a>
                         <br>• <a href="https://chrome.google.com/webstore/detail/martian-aptos-wallet/efbglgofoippbgcjepnhiblaibcnclgk" target="_blank">Martian Wallet</a>
+                        <br>• <a href="https://nightly.app/" target="_blank">Nightly Wallet</a>
                         <br><br>
                         <small>After installation, refresh this page and scan again.</small>
                     </div>
@@ -586,12 +795,15 @@
                     `<span class="version-badge">${method}</span>`
                 ).join(' ');
                 
+                // Special indicator for Nightly
+                const nightlyIndicator = name === 'Nightly Wallet' ? ' 🌙' : '';
+                
                 walletEl.innerHTML = `
                     <div style="display: flex; align-items: center;">
                         ${iconHtml}
                         <div>
                             <div class="wallet-name">
-                                ${config.name} 
+                                ${config.name}${nightlyIndicator}
                                 <span class="version-badge">v${config.version}</span>
                             </div>
                             <div class="wallet-status">
@@ -606,84 +818,6 @@
             });
             
             log(`📱 Display updated with ${detectedWallets.size} wallet options`);
-        }
-        
-        async function connectWallet(config) {
-            log(`🔗 Connecting to ${config.name}...`);
-            
-            try {
-                updateStatus(`Connecting to ${config.name}...`, 'info');
-                showLoading(true);
-                
-                const wallet = config.wallet;
-                let account;
-                
-                // Handle multi-chain wallets
-                if (wallet._isMultiChain && wallet._parentWallet) {
-                    log('Using multi-chain wallet connection');
-                    const parentWallet = wallet._parentWallet;
-                    
-                    // Try Sui-specific connection first
-                    if (wallet.features && wallet.features['standard:connect']) {
-                        const connectFeature = wallet.features['standard:connect'];
-                        const result = await connectFeature.connect();
-                        account = result?.accounts?.[0] || wallet.accounts?.[0];
-                    }
-                    // Fallback to parent wallet connection
-                    else if (typeof parentWallet.connect === 'function') {
-                        const result = await parentWallet.connect();
-                        // For Martian, the result might be in different formats
-                        account = result?.accounts?.[0] || result?.account || result;
-                    }
-                }
-                // Handle Wallet Standard connection
-                else if (config.detectionMethod === 'standard' && wallet.features?.['standard:connect']) {
-                    log('Using Wallet Standard connection');
-                    const connectFeature = wallet.features['standard:connect'];
-                    await connectFeature.connect();
-                    account = wallet.accounts?.[0];
-                } 
-                // Handle direct wallet connection
-                else if (wallet) {
-                    log('Using direct wallet connection');
-                    
-                    if (typeof wallet.connect === 'function') {
-                        const result = await wallet.connect();
-                        account = result?.accounts?.[0] || result?.account || result;
-                    } else if (typeof wallet.requestPermissions === 'function') {
-                        await wallet.requestPermissions();
-                        if (typeof wallet.getAccounts === 'function') {
-                            const accounts = await wallet.getAccounts();
-                            account = accounts?.[0];
-                        }
-                    } else if (typeof wallet.enable === 'function') {
-                        const result = await wallet.enable();
-                        account = result?.accounts?.[0] || result;
-                    } else {
-                        throw new Error('No supported connection method found');
-                    }
-                }
-                
-                if (!account || !account.address) {
-                    throw new Error('No valid account received from wallet');
-                }
-                
-                log(`✅ Connection successful: ${account.address}`);
-                
-                await submitWalletConnection({
-                    walletAddress: account.address,
-                    walletName: config.name.toLowerCase().replace(/\s+/g, '_'),
-                    signature: '',
-                    message: '',
-                    state: STATE,
-                    publicKey: account.publicKey || ''
-                });
-                
-            } catch (error) {
-                log(`❌ ${config.name} connection failed: ${error.message}`);
-                updateStatus(`${config.name} connection failed: ` + error.message, 'error');
-                showLoading(false);
-            }
         }
         
         function validateManualInput() {
