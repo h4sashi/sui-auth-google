@@ -1,4 +1,5 @@
 // server.js - Refactored with external HTML template
+// git add . && git commit -m "Wallet Fix" && git push origin main
 import express from "express";
 import bodyParser from "body-parser";
 import fetch from "node-fetch";
@@ -105,7 +106,6 @@ app.get("/wallet-connect", (req, res) => {
 });
 
 // NEW: Unified wallet connection endpoint
-// Replace your /auth/wallet-connect endpoint with this fixed version
 
 app.post("/auth/wallet-connect", async (req, res) => {
   console.log("🔗 Wallet connection request received");
@@ -150,24 +150,18 @@ app.post("/auth/wallet-connect", async (req, res) => {
     console.log(`✅ Valid wallet address: ${walletAddress}`);
     console.log(`🔗 Wallet connecting: ${walletName || 'Unknown'} - ${walletAddress}`);
     
-    // FIX: Properly map wallet names to auth methods
+    // FIX: Map wallet names to allowed auth methods (only 'zklogin' and 'manual_wallet' allowed)
     function getAuthMethod(walletName) {
+      // Manual entry uses manual_wallet
       if (!walletName || walletName === 'manual') {
         return 'manual_wallet';
       }
       
-      // Map all known wallet extensions to a consistent auth method
-      const walletMapping = {
-        'suiet': 'wallet_extension',
-        'martian': 'wallet_extension', 
-        'glass': 'wallet_extension',
-        'slush': 'wallet_extension',
-        'suiWallet': 'wallet_extension',
-        'ethos': 'wallet_extension',
-        'manual': 'manual_wallet'
-      };
-      
-      return walletMapping[walletName] || 'wallet_extension';
+      // ALL wallet extensions should use 'manual_wallet' since 'zklogin' is for Google OAuth
+      // Your database only allows 'zklogin' and 'manual_wallet'
+      // 'zklogin' is reserved for Google OAuth authentication
+      // All wallet connections (Suiet, Martian, etc.) should use 'manual_wallet'
+      return 'manual_wallet';
     }
     
     const authMethod = getAuthMethod(walletName);
