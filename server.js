@@ -97,18 +97,8 @@ function loadTemplate(templateName, replacements = {}) {
 
 // Wallet connection page using external template
 app.get("/wallet-connect", (req, res) => {
-  const { state } = req.query;
-  
-  if (!state) {
-    return res.status(400).send("Missing state parameter");
-  }
-
-  // Load the updated HTML template with Wallet Standard integration
-  const html = loadTemplate('wallet-connect.html', {
-    STATE: state
-  });
-
-  res.send(html);
+  // Redirect to the external wallet connect page
+  res.redirect("https://sui-frontend-nu.vercel.app/");
 });
 
 // Enhanced wallet connection endpoint with Wallet Standard support
@@ -121,28 +111,27 @@ app.post("/auth/wallet-connect", async (req, res) => {
     
     // Basic validation
     if (!state) {
-      console.log("❌ Missing state parameter");
+      console.log("Missing state parameter");
       return res.status(400).json({
         success: false,
         error: "Missing state parameter"
       });
     }
     
-    // Validate wallet connection using our utility
-    const validation = validateWalletConnection(connectionData);
-    if (!validation.valid) {
-      console.log("❌ Wallet validation failed:", validation.error);
-      return res.status(400).json({
-        success: false,
-        error: validation.error
-      });
-    }
+      const validation = validateWalletConnection(connectionData);
+      if (!validation.valid) {
+        console.log("Wallet validation failed:", validation.error);
+        return res.status(400).json({
+          success: false,
+          error: validation.error
+        });
+      }
     
     const { normalizedWalletName, walletInfo } = validation;
     const authMethod = getWalletAuthMethod(normalizedWalletName);
     
-    console.log(`✅ Valid wallet connection: ${formatWalletConnectionLog(connectionData)}`);
-    console.log(`📋 Auth method: ${authMethod} (${walletInfo.name})`);
+      console.log(`Valid wallet connection: ${formatWalletConnectionLog(connectionData)}`);
+      console.log(`Auth method: ${authMethod} (${walletInfo.name})`);
     
     // Validate public key if provided
     if (connectionData.publicKey && !validatePublicKey(connectionData.publicKey)) {
@@ -181,10 +170,10 @@ app.post("/auth/wallet-connect", async (req, res) => {
         network: NETWORK_CONFIG.current
       };
       
-      console.log(`✅ Blockchain verified: ${blockchainInfo.balanceFormatted}`);
+        console.log(`Blockchain verified: ${blockchainInfo.balanceFormatted}`);
       
     } catch (blockchainError) {
-      console.log(`⚠️ Blockchain verification failed: ${blockchainError.message}`);
+        console.log(`Blockchain verification failed: ${blockchainError.message}`);
       blockchainInfo.error = blockchainError.message;
     }
     
@@ -196,7 +185,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
       .single();
     
     if (queryError && queryError.code !== 'PGRST116') {
-      console.error("❌ Database query error:", queryError);
+        console.error("Database query error:", queryError);
       return res.status(500).json({ 
         success: false,
         error: "Database query failed" 
@@ -207,7 +196,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
     let isNewUser = false;
     
     if (existingProfile) {
-      console.log("✅ Found existing user profile:", existingProfile.id);
+        console.log("Found existing user profile:", existingProfile.id);
       
       // Update existing profile with new connection info
       const updateData = {
@@ -229,7 +218,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
         .single();
         
       if (updateError) {
-        console.error("❌ Profile update error:", updateError);
+          console.error("Profile update error:", updateError);
         return res.status(500).json({ 
           success: false,
           error: "Profile update failed" 
@@ -237,9 +226,9 @@ app.post("/auth/wallet-connect", async (req, res) => {
       }
       
       finalProfile = updated;
-      console.log("✅ Existing user profile updated");
+        console.log("Existing user profile updated");
     } else {
-      console.log("🆕 Creating new user profile for wallet connection");
+        console.log("Creating new user profile for wallet connection");
       
       const tempName = generateTempUsername(walletAddress);
       
@@ -256,7 +245,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
         updated_at: new Date().toISOString()
       };
       
-      console.log("📋 Profile data to insert:", JSON.stringify(profileData, null, 2));
+        console.log("Profile data to insert:", JSON.stringify(profileData, null, 2));
       
       const { data: inserted, error: insertError } = await supabase
         .from("user_profiles")
@@ -265,7 +254,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
         .single();
         
       if (insertError) {
-        console.error("❌ Profile insert error:", insertError);
+          console.error("Profile insert error:", insertError);
         return res.status(500).json({ 
           success: false,
           error: "Profile creation failed: " + insertError.message 
@@ -274,7 +263,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
       
       finalProfile = inserted;
       isNewUser = true;
-      console.log("✅ New user profile created:", finalProfile.id);
+        console.log("New user profile created:", finalProfile.id);
     }
     
     const requiresUsername = needsUsernameSetup(finalProfile.name);
@@ -295,7 +284,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
     
     // Store session for Unity polling
     sessions[state] = sessionData;
-    console.log("✅ Session stored with state:", state);
+      console.log("Session stored with state:", state);
     
     const responseData = {
       success: true,
@@ -323,11 +312,11 @@ app.post("/auth/wallet-connect", async (req, res) => {
       }
     };
     
-    console.log("✅ Sending success response");
+      console.log("Sending success response");
     res.json(responseData);
     
   } catch (err) {
-    console.error("❌ Wallet connection error:", err);
+      console.error("Wallet connection error:", err);
     res.status(500).json({ 
       success: false,
       error: "Wallet connection failed: " + err.message 
@@ -406,7 +395,7 @@ app.post("/setup-username", async (req, res) => {
       });
     }
     
-    console.log(`✅ Username updated: ${walletAddress} -> ${trimmedUsername}`);
+      console.log(`Username updated: ${walletAddress} -> ${trimmedUsername}`);
     
     res.json({
       success: true,
@@ -613,7 +602,7 @@ app.post("/validate-wallet", async (req, res) => {
     const { address } = req.body;
     
     if (!address) {
-      console.log("❌ No address provided");
+      console.log("No address provided");
       return res.status(400).json({
         valid: false,
         address: null,
@@ -738,5 +727,5 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()}`);
   console.log(`RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
-  console.log(`🔌 Wallet Standard integration: ENABLED`);
+    console.log(`Wallet Standard integration: ENABLED`);
 });
