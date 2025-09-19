@@ -96,9 +96,11 @@ function loadTemplate(templateName, replacements = {}) {
 }
 
 // Wallet connection page using external template
+// In server.js, modify the wallet-connect endpoint
 app.get("/wallet-connect", (req, res) => {
-  // Redirect to the external wallet connect page
-  res.redirect("https://sui-frontend-nu.vercel.app/");
+  // Pass the state parameter to the frontend
+  const state = req.query.state;
+  res.redirect(`https://sui-frontend-nu.vercel.app/?state=${state}`);
 });
 
 // Enhanced wallet connection endpoint with Wallet Standard support
@@ -135,7 +137,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
     
     // Validate public key if provided
     if (connectionData.publicKey && !validatePublicKey(connectionData.publicKey)) {
-      console.warn("⚠️ Invalid public key format provided, ignoring");
+      console.warn("Invalid public key format provided, ignoring");
       delete connectionData.publicKey;
     }
     
@@ -646,10 +648,10 @@ app.post("/validate-wallet", async (req, res) => {
           network: NETWORK_CONFIG.current
         };
         
-        console.log(`✅ Blockchain info:`, blockchainInfo);
+        console.log(`Blockchain info:`, blockchainInfo);
         
       } catch (blockchainError) {
-        console.log(`⚠️ Blockchain check failed: ${blockchainError.message}`);
+        console.log(`Blockchain check failed: ${blockchainError.message}`);
         blockchainInfo.error = blockchainError.message;
       }
     }
