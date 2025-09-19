@@ -1,33 +1,4 @@
-// Enhanced wallet detection with manual triggers
-        async function detectAndConnectWallet() {
-            console.log('🔗 Starting enhanced wallet detection...');
-            showLoading(true);
-            
-            try {
-                updateStatus('Detecting wallet extensions...', 'info');
-                
-                const hasWallets = await detectWallets();
-                if (!hasWallets) {
-                    showLoading(false);
-                    updateStatus('No wallets auto-detected. Try the manual wallet buttons below.', 'info');
-                    return;
-                }
-                
-                // Try to connect to the first available wallet
-                const readyWallet = detectedWallets.find(w => w.status === 'ready');
-                if (readyWallet) {
-                    await connectSpecificWallet(readyWallet);
-                } else {
-                    showLoading(false);
-                    updateStatus('Wallets found but not ready. Try the manual buttons below.', 'info');
-                }
-                
-            } catch (error) {
-                console.error('❌ Wallet detection/connection failed:', error);
-                updateStatus('Auto-detection failed. Try the manual wallet buttons below.', 'error');
-                showLoading(false);
-            }
-        }<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
     <title>Connect Your Sui Wallet</title>
@@ -206,14 +177,11 @@
             font-size: 12px;
             color: #666;
         }
-        .wallet-option.already-detected {
-            opacity: 0.6;
-            border-color: #28a745;
-            background: #f0fff0;
-        }
-        .wallet-option.already-detected:hover {
-            border-color: #28a745;
-            background: #f0fff0;
+        .wallet-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 10px;
+            border-radius: 50%;
         }
     </style>
 </head>
@@ -224,35 +192,19 @@
         
         <div id="status" class="status info" style="display: none;">Ready to connect</div>
         
-        <!-- Auto-Detected Wallets -->
+        <!-- Modern Wallet Standard Connection -->
         <div class="wallet-section">
-            <h3>🚀 Auto-Detected Wallets</h3>
+            <h3>🚀 Recommended: Use Wallet Extensions</h3>
             <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
-                These wallets were automatically detected and are ready to connect
+                Connect with any installed Sui wallet extension using the modern Wallet Standard
             </p>
             
-            <div id="detected-wallets">
-                <div class="wallet-status">Detecting wallets...</div>
-            </div>
+            <div id="detected-wallets"></div>
             
             <button class="connect-button" id="extension-connect" onclick="detectAndConnectWallet()">
-                Refresh Detection
+                Detect & Connect Wallet
             </button>
             <div id="wallet-status" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
-        </div>
-        
-        <div class="divider">
-            <span>OR</span>
-        </div>
-        
-        <!-- Manual Wallet Triggers -->
-        <div class="wallet-section">
-            <h3>🎯 Try Specific Wallets</h3>
-            <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
-                Click to manually try connecting to specific wallets (even if not detected above)
-            </p>
-            
-            <div id="manual-wallet-triggers"></div>
         </div>
         
         <div class="divider">
@@ -462,39 +414,43 @@
             if (detectedWallets.length === 0) {
                 container.innerHTML = `
                     <div class="wallet-status">
-                        No wallets auto-detected. Try the manual triggers below.
+                        No wallet extensions detected. Please install a Sui wallet extension like:
+                        <br><br>
+                        • Sui Wallet (Official)
+                        <br>• Suiet Wallet  
+                        <br>• Martian Wallet
+                        <br>• Glass Wallet
+                        <br>• Ethos Wallet
                     </div>
                 `;
-            } else {
-                detectedWallets.forEach(wallet => {
-                    const walletEl = document.createElement('div');
-                    walletEl.className = 'wallet-option detected';
-                    
-                    const iconHtml = wallet.icon ? 
-                        `<img src="${wallet.icon}" alt="${wallet.name}" class="wallet-icon">` : 
-                        '🔐 ';
-                    
-                    const detectionBadge = wallet.detectionMethod === 'wallet-standard' ? 
-                        '<span style="font-size: 10px; background: #28a745; color: white; padding: 2px 6px; border-radius: 10px;">Modern</span>' :
-                        '<span style="font-size: 10px; background: #ffc107; color: black; padding: 2px 6px; border-radius: 10px;">Legacy</span>';
-                    
-                    walletEl.innerHTML = `
-                        <div style="display: flex; align-items: center;">
-                            ${iconHtml}
-                            <div>
-                                <div class="wallet-name">${wallet.name} ${detectionBadge}</div>
-                                <div class="wallet-status">Ready to Connect</div>
-                            </div>
-                        </div>
-                        <div style="color: #28a745;">✓</div>
-                    `;
-                    walletEl.onclick = () => connectSpecificWallet(wallet);
-                    container.appendChild(walletEl);
-                });
+                return;
             }
             
-            // Update manual triggers after detection
-            createManualWalletTriggers();
+            detectedWallets.forEach(wallet => {
+                const walletEl = document.createElement('div');
+                walletEl.className = 'wallet-option detected';
+                
+                const iconHtml = wallet.icon ? 
+                    `<img src="${wallet.icon}" alt="${wallet.name}" class="wallet-icon">` : 
+                    '🔐 ';
+                
+                const detectionBadge = wallet.detectionMethod === 'wallet-standard' ? 
+                    '<span style="font-size: 10px; background: #28a745; color: white; padding: 2px 6px; border-radius: 10px;">Modern</span>' :
+                    '<span style="font-size: 10px; background: #ffc107; color: black; padding: 2px 6px; border-radius: 10px;">Legacy</span>';
+                
+                walletEl.innerHTML = `
+                    <div style="display: flex; align-items: center;">
+                        ${iconHtml}
+                        <div>
+                            <div class="wallet-name">${wallet.name} ${detectionBadge}</div>
+                            <div class="wallet-status">Ready to Connect</div>
+                        </div>
+                    </div>
+                    <div style="color: #28a745;">✓</div>
+                `;
+                walletEl.onclick = () => connectSpecificWallet(wallet);
+                container.appendChild(walletEl);
+            });
         }
         
         // Connect to specific wallet (modern or legacy)
@@ -572,310 +528,32 @@
             }
         }
         
-        // Comprehensive list of Sui wallets with multiple connection methods
-        const KNOWN_SUI_WALLETS = [
-            {
-                name: 'Sui Wallet (Official)',
-                key: 'suiWallet',
-                icon: '🏛️',
-                windowProps: ['suiWallet', 'sui'],
-                extensionId: 'opcgpfmipidbgpenhmajoajpbobppdil',
-                connectMethods: ['connect', 'requestPermissions'],
-                website: 'https://chrome.google.com/webstore/detail/opcgpfmipidbgpenhmajoajpbobppdil'
-            },
-            {
-                name: 'Suiet Wallet',
-                key: 'suiet',
-                icon: '🔵',
-                windowProps: ['suiet', 'Suiet'],
-                extensionId: 'khpkpbbcccdmmclmpigdgddabeilkdpd',
-                connectMethods: ['connect'],
-                website: 'https://chrome.google.com/webstore/detail/khpkpbbcccdmmclmpigdgddabeilkdpd'
-            },
-            {
-                name: 'Martian Wallet',
-                key: 'martian',
-                icon: '🚀',
-                windowProps: ['martian', 'martianWallet'],
-                extensionId: 'efbglgofoippbgcjepnhiblaibcnclgk',
-                connectMethods: ['connect'],
-                website: 'https://chrome.google.com/webstore/detail/efbglgofoippbgcjepnhiblaibcnclgk'
-            },
-            {
-                name: 'Glass Wallet',
-                key: 'glass',
-                icon: '🪟',
-                windowProps: ['glass', 'glassWallet'],
-                extensionId: 'loinekcabhlmhjjbocijdoimmejangoa',
-                connectMethods: ['connect', 'enable'],
-                website: 'https://chrome.google.com/webstore/detail/loinekcabhlmhjjbocijdoimmejangoa'
-            },
-            {
-                name: 'Ethos Wallet',
-                key: 'ethos',
-                icon: '⚡',
-                windowProps: ['ethos', 'ethosWallet'],
-                extensionId: 'mcbigmjiafegjnnogedioegffbooigli',
-                connectMethods: ['connect', 'requestPermissions'],
-                website: 'https://chrome.google.com/webstore/detail/mcbigmjiafegjnnogedioegffbooigli'
-            },
-            {
-                name: 'OneKey Wallet',
-                key: 'onekey',
-                icon: '🔐',
-                windowProps: ['onekey', '$onekey'],
-                extensionId: 'jnmbobjmhlngoefaiojfljckilhhlhcj',
-                connectMethods: ['connect'],
-                website: 'https://chrome.google.com/webstore/detail/jnmbobjmhlngoefaiojfljckilhhlhcj'
-            },
-            {
-                name: 'Surf Wallet',
-                key: 'surf',
-                icon: '🏄',
-                windowProps: ['surf', 'surfWallet'],
-                extensionId: null,
-                connectMethods: ['connect'],
-                website: 'https://surf.tech'
-            },
-            {
-                name: 'Nightly Wallet',
-                key: 'nightly',
-                icon: '🌙',
-                windowProps: ['nightly', 'nightlyWallet'],
-                extensionId: null,
-                connectMethods: ['connect'],
-                website: 'https://nightly.app'
-            },
-            {
-                name: 'SafePal Wallet',
-                key: 'safepal',
-                icon: '🛡️',
-                windowProps: ['safepal', 'SafePal'],
-                extensionId: null,
-                connectMethods: ['connect'],
-                website: 'https://safepal.io'
-            },
-            {
-                name: 'Coin98 Wallet',
-                key: 'coin98',
-                icon: '🪙',
-                windowProps: ['coin98', 'coin98Wallet'],
-                extensionId: null,
-                connectMethods: ['connect'],
-                website: 'https://coin98.com'
-            }
-        ];
-        
-        // Create manual wallet trigger buttons
-        function createManualWalletTriggers() {
-            const container = document.getElementById('manual-wallet-triggers');
-            container.innerHTML = '';
-            
-            KNOWN_SUI_WALLETS.forEach(wallet => {
-                const isDetected = detectedWallets.some(detected => 
-                    detected.name.toLowerCase().includes(wallet.name.toLowerCase().split(' ')[0])
-                );
-                
-                const walletEl = document.createElement('div');
-                walletEl.className = `wallet-option ${isDetected ? 'already-detected' : ''}`;
-                
-                if (isDetected) {
-                    walletEl.style.opacity = '0.6';
-                    walletEl.style.borderColor = '#28a745';
-                    walletEl.style.backgroundColor = '#f0fff0';
-                }
-                
-                const statusText = isDetected ? 'Already Detected Above' : 'Try Manual Connection';
-                const statusIcon = isDetected ? '✓' : '?';
-                
-                walletEl.innerHTML = `
-                    <div style="display: flex; align-items: center;">
-                        <span style="font-size: 20px; margin-right: 10px;">${wallet.icon}</span>
-                        <div>
-                            <div class="wallet-name">${wallet.name}</div>
-                            <div class="wallet-status">${statusText}</div>
-                        </div>
-                    </div>
-                    <div style="color: ${isDetected ? '#28a745' : '#6c757d'};">${statusIcon}</div>
-                `;
-                
-                if (!isDetected) {
-                    walletEl.onclick = () => tryManualWalletConnection(wallet);
-                } else {
-                    walletEl.style.cursor = 'default';
-                    walletEl.onclick = () => {
-                        updateStatus('This wallet was already detected above. Use the auto-detected version instead.', 'info');
-                    };
-                }
-                
-                container.appendChild(walletEl);
-            });
-        }
-        
-        // Try manual connection to specific wallet
-        async function tryManualWalletConnection(walletInfo) {
-            console.log(`🎯 Attempting manual connection to ${walletInfo.name}...`);
-            updateStatus(`Trying to connect to ${walletInfo.name}...`, 'info');
+        // Enhanced wallet detection and connection
+        async function detectAndConnectWallet() {
+            console.log('🔗 Starting enhanced wallet detection...');
             showLoading(true);
             
             try {
-                let wallet = null;
-                let connectionMethod = null;
+                updateStatus('Detecting wallet extensions...', 'info');
                 
-                // Method 1: Check all possible window properties
-                console.log(`🔍 Checking window properties: [${walletInfo.windowProps.join(', ')}]`);
-                for (const prop of walletInfo.windowProps) {
-                    if (window[prop] && typeof window[prop] === 'object') {
-                        wallet = window[prop];
-                        connectionMethod = 'window-property';
-                        console.log(`✅ Found via window.${prop}`);
-                        break;
-                    }
+                const hasWallets = await detectWallets();
+                if (!hasWallets) {
+                    throw new Error('No wallet extensions found. Please install a Sui wallet extension.');
                 }
                 
-                // Method 2: Try Wallet Standard if window method failed
-                if (!wallet && walletsAPI) {
-                    console.log(`🔍 Checking Wallet Standard registry...`);
-                    const standardWallets = walletsAPI.get();
-                    wallet = standardWallets.find(w => 
-                        w.name.toLowerCase().includes(walletInfo.name.split(' ')[0].toLowerCase()) ||
-                        walletInfo.windowProps.some(prop => w.name.toLowerCase().includes(prop.toLowerCase()))
-                    );
-                    
-                    if (wallet) {
-                        connectionMethod = 'wallet-standard';
-                        console.log(`✅ Found via Wallet Standard: ${wallet.name}`);
-                    }
-                }
-                
-                // Method 3: Extension detection + retry
-                if (!wallet && walletInfo.extensionId) {
-                    console.log(`🔍 Checking for extension ${walletInfo.extensionId}...`);
-                    const hasExtension = await checkExtensionInstalled(walletInfo.extensionId);
-                    
-                    if (hasExtension) {
-                        console.log(`✅ Extension detected, waiting for injection...`);
-                        updateStatus(`${walletInfo.name} extension found. Waiting for wallet to load...`, 'info');
-                        
-                        // Wait a bit for injection
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        
-                        // Retry window property check
-                        for (const prop of walletInfo.windowProps) {
-                            if (window[prop] && typeof window[prop] === 'object') {
-                                wallet = window[prop];
-                                connectionMethod = 'window-property-retry';
-                                console.log(`✅ Found via delayed window.${prop}`);
-                                break;
-                            }
-                        }
-                    }
-                }
-                
-                if (!wallet) {
-                    throw new Error(`${walletInfo.name} is not installed or not ready. Please install it first: ${walletInfo.website}`);
-                }
-                
-                // Try to connect using available methods
-                console.log(`🔗 Attempting connection via ${connectionMethod}...`);
-                let account = null;
-                
-                if (connectionMethod === 'wallet-standard') {
-                    // Wallet Standard connection
-                    const connectFeature = wallet.features['standard:connect'];
-                    if (connectFeature) {
-                        await connectFeature.connect();
-                        account = wallet.accounts[0];
-                    } else {
-                        throw new Error('Wallet does not support standard:connect');
-                    }
+                // Try to connect to the first available wallet
+                const readyWallet = detectedWallets.find(w => w.status === 'ready');
+                if (readyWallet) {
+                    await connectSpecificWallet(readyWallet);
                 } else {
-                    // Legacy connection methods
-                    for (const method of walletInfo.connectMethods) {
-                        console.log(`🔧 Trying ${method}() method...`);
-                        
-                        try {
-                            if (typeof wallet[method] === 'function') {
-                                const result = await wallet[method]();
-                                console.log(`${method}() result:`, result);
-                                
-                                // Extract account from different result formats
-                                if (result?.accounts?.[0]) {
-                                    account = result.accounts[0];
-                                } else if (result?.account) {
-                                    account = result.account;
-                                } else if (result?.address || typeof result === 'string') {
-                                    account = result;
-                                } else if (method === 'requestPermissions') {
-                                    // After requestPermissions, try getAccounts
-                                    if (typeof wallet.getAccounts === 'function') {
-                                        const accounts = await wallet.getAccounts();
-                                        account = accounts?.[0];
-                                    }
-                                }
-                                
-                                if (account) {
-                                    console.log(`✅ Connection successful via ${method}():`, account);
-                                    break;
-                                }
-                            }
-                        } catch (methodError) {
-                            console.log(`❌ ${method}() failed:`, methodError.message);
-                            continue;
-                        }
-                    }
+                    throw new Error('No wallets are ready to connect');
                 }
-                
-                if (!account) {
-                    throw new Error('Connection succeeded but no account was returned');
-                }
-                
-                // Extract wallet address
-                const walletAddress = account.address || account;
-                if (!walletAddress || typeof walletAddress !== 'string') {
-                    throw new Error('Invalid wallet address received');
-                }
-                
-                console.log(`✅ Successfully connected to ${walletInfo.name}: ${walletAddress}`);
-                updateStatus(`${walletInfo.name} connected successfully!`, 'success');
-                
-                // Submit to server
-                await submitWalletConnection({
-                    walletAddress: walletAddress,
-                    walletName: walletInfo.key,
-                    signature: '',
-                    message: '',
-                    state: STATE,
-                    publicKey: account.publicKey || ''
-                });
                 
             } catch (error) {
-                console.error(`❌ Manual connection to ${walletInfo.name} failed:`, error);
-                
-                if (error.message.includes('User rejected') || error.message.includes('denied')) {
-                    updateStatus(`Connection to ${walletInfo.name} was cancelled by user`, 'error');
-                } else if (error.message.includes('not installed')) {
-                    updateStatus(`${walletInfo.name} is not installed. Install it first and refresh the page.`, 'error');
-                } else {
-                    updateStatus(`${walletInfo.name} connection failed: ${error.message}`, 'error');
-                }
-                
+                console.error('❌ Wallet detection/connection failed:', error);
+                updateStatus('Connection failed: ' + error.message, 'error');
                 showLoading(false);
-                throw error;
             }
-        }
-        
-        // Enhanced extension detection
-        async function checkExtensionInstalled(extensionId) {
-            if (!extensionId) return false;
-            
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => resolve(true);
-                img.onerror = () => resolve(false);
-                img.src = `chrome-extension://${extensionId}/icon.png`;
-                setTimeout(() => resolve(false), 1000);
-            });
         }
         
         // Manual wallet connection (unchanged)
@@ -967,16 +645,13 @@
                 updateStatus('⚠️ Using legacy detection (Wallet Standard not available)', 'info');
             }
             
-            // Create manual trigger buttons immediately
-            createManualWalletTriggers();
-            
             // Initial detection
             setTimeout(async () => {
                 const hasWallets = await detectWallets();
                 if (hasWallets) {
-                    updateStatus(`✅ Found ${detectedWallets.length} wallet(s) automatically! You can also try the manual buttons below.`, 'success');
+                    updateStatus(`✅ Found ${detectedWallets.length} wallet(s)! Click to connect.`, 'success');
                 } else {
-                    updateStatus('No wallets auto-detected. Try clicking the wallet buttons below to connect manually.', 'info');
+                    updateStatus('No wallets detected. Please install a Sui wallet extension.', 'info');
                 }
             }, 1000);
             
