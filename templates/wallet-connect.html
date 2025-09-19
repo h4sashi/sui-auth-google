@@ -238,37 +238,49 @@
         </div>
     </div>
 
-    <!-- Load Wallet Standard Libraries -->
-    <script src="https://unpkg.com/@wallet-standard/core@1.0.3/lib/umd/index.js"></script>
-    <script src="https://unpkg.com/@wallet-standard/features@1.0.3/lib/umd/index.js"></script>
+    <!-- Load Wallet Standard Libraries with fallback -->
+    <script src="https://unpkg.com/@mysten/wallet-standard@0.12.0/dist/index.umd.js"></script>
     
     <script>
         const STATE = '{{STATE}}';
         let wallets = new Map();
         let walletsApi;
         
-        // Initialize Wallet Standard
+        // Initialize Wallet Standard with multiple fallbacks
         async function initializeWalletStandard() {
             try {
-                console.log('🔧 Initializing Wallet Standard API...');
+                console.log('Initializing Wallet Standard API...');
                 
-                if (typeof window.walletStandard === 'undefined') {
-                    console.log('⚠️ Wallet Standard library not available');
-                    return false;
+                // Try multiple possible API locations
+                const possibleAPIs = [
+                    window.WalletStandard?.getWallets,
+                    window.walletStandard?.getWallets,
+                    window.MysuiWalletStandard?.getWallets
+                ];
+                
+                for (const apiGetter of possibleAPIs) {
+                    if (typeof apiGetter === 'function') {
+                        try {
+                            walletsApi = apiGetter();
+                            console.log('Wallet Standard API initialized successfully');
+                            
+                            // Listen for wallet registration events
+                            walletsApi.on('register', handleWalletRegistration);
+                            walletsApi.on('unregister', handleWalletUnregistration);
+                            
+                            return true;
+                        } catch (e) {
+                            console.log('API attempt failed:', e.message);
+                            continue;
+                        }
+                    }
                 }
                 
-                // Get wallets registry
-                walletsApi = window.walletStandard.getWallets();
-                console.log('✅ Wallet Standard API initialized');
-                
-                // Listen for wallet registration events
-                walletsApi.on('register', handleWalletRegistration);
-                walletsApi.on('unregister', handleWalletUnregistration);
-                
-                return true;
+                console.log('Wallet Standard library not available, falling back to legacy detection');
+                return false;
                 
             } catch (error) {
-                console.error('❌ Failed to initialize Wallet Standard:', error);
+                console.error('Failed to initialize Wallet Standard:', error);
                 return false;
             }
         }
@@ -313,47 +325,112 @@
             return hasSuiChain || hasSuiFeatures || wallet.name.toLowerCase().includes('sui');
         }
         
-        // Detect and display wallets
+        // Detect and display wallets with fallback methods
         async function detectAndShowWallets() {
-            console.log('🔍 Starting wallet detection...');
+            console.log('Starting wallet detection...');
             showLoading(true);
             updateStatus('Scanning for wallet extensions...', 'info');
             
             try {
-                if (!walletsApi) {
-                    throw new Error('Wallet Standard API not initialized');
-                }
-                
                 // Clear existing wallets
                 wallets.clear();
                 
-                // Get currently available wallets
-                const availableWallets = walletsApi.get();
-                console.log(`📋 Found ${availableWallets.length} total wallets`);
-                
-                // Filter for Sui-compatible wallets
-                availableWallets.forEach(wallet => {
-                    if (isSuiWallet(wallet)) {
-                        wallets.set(wallet.name, wallet);
-                        console.log(`✅ Detected: ${wallet.name} (v${wallet.version})`);
-                        console.log(`   Chains: ${wallet.chains.join(', ')}`);
-                        console.log(`   Features: ${Object.keys(wallet.features).join(', ')}`);
+                // Method 1: Try Wallet Standard API
+                if (walletsApi) {
+                    try {
+                        const standardWallets = walletsApi.get();
+                        console.log(`Found ${standardWallets.length} wallets via Wallet Standard`);
+                        
+                        standardWallets.forEach(wallet => {
+                            if (isSuiWallet(wallet)) {
+                                wallets.set(wallet.name, wallet);
+                                console.log(`Detected via Standard: ${wallet.name}`);
+                            }
+                        });
+                    } catch (e) {
+                        console.log('Standard API detection failed:', e.message);
                     }
-                });
+                }
+                
+                // Method 2: Legacy window detection (fallback)
+                await detectWalletsLegacy();
                 
                 updateWalletDisplay();
                 
                 if (wallets.size === 0) {
                     updateStatus('No Sui wallets detected. Please install a compatible wallet extension.', 'error');
                 } else {
-                    updateStatus(`✅ Found ${wallets.size} Sui wallet(s)! Click any wallet to connect.`, 'success');
+                    updateStatus(`Found ${wallets.size} Sui wallet(s)! Click any wallet to connect.`, 'success');
                 }
                 
             } catch (error) {
-                console.error('❌ Wallet detection failed:', error);
+                console.error('Wallet detection failed:', error);
                 updateStatus('Wallet detection failed: ' + error.message, 'error');
             } finally {
                 showLoading(false);
+            }
+        }
+        
+        // Legacy wallet detection fallback
+        async function detectWalletsLegacy() {
+            console.log('Running legacy wallet detection...');
+            
+            const knownWallets = {
+                suiet: {
+                    name: 'Suiet Wallet',
+                    windowKeys: ['suiet', 'suietWallet'],
+                    icon: 'https://suiet.app/logo.png'
+                },
+                martian: {
+                    name: 'Martian Wallet',  
+                    windowKeys: ['martian', 'martianWallet'],
+                    icon: null
+                },
+                sui: {
+                    name: 'Sui Wallet',
+                    windowKeys: ['suiWallet', 'sui'],
+                    icon: null
+                },
+                glass: {
+                    name: 'Glass Wallet',
+                    windowKeys: ['glass', 'glassWallet'],
+                    icon: null
+                },
+                ethos: {
+                    name: 'Ethos Wallet',
+                    windowKeys: ['ethos', 'ethosWallet'],  
+                    icon: null
+                },
+                nightly: {
+                    name: 'Nightly Wallet',
+                    windowKeys: ['nightly', 'nightlyWallet'],
+                    icon: null
+                }
+            };
+            
+            for (const [key, walletInfo] of Object.entries(knownWallets)) {
+                for (const windowKey of walletInfo.windowKeys) {
+                    if (window[windowKey] && typeof window[windowKey] === 'object') {
+                        const wallet = window[windowKey];
+                        
+                        // Check if it has wallet methods
+                        if (wallet.connect || wallet.getAccounts || wallet.requestPermissions) {
+                            // Don't duplicate if already found via standard
+                            if (!Array.from(wallets.values()).some(w => w.name === walletInfo.name)) {
+                                wallets.set(walletInfo.name, {
+                                    name: walletInfo.name,
+                                    version: 'legacy',
+                                    icon: walletInfo.icon,
+                                    chains: ['sui:mainnet', 'sui:testnet', 'sui:devnet'],
+                                    features: { 'legacy:connect': wallet },
+                                    accounts: [],
+                                    _wallet: wallet // store reference for connection
+                                });
+                                console.log(`Detected via legacy: ${walletInfo.name}`);
+                            }
+                        }
+                    }
+                }
             }
         }
         
@@ -407,38 +484,58 @@
             });
         }
         
-        // Connect to specific wallet using Wallet Standard
+        // Connect to specific wallet using either Standard or Legacy methods
         async function connectWallet(wallet) {
-            console.log(`🔗 Connecting to ${wallet.name}...`);
+            console.log(`Connecting to ${wallet.name}...`);
             
             try {
                 updateStatus(`Connecting to ${wallet.name}...`, 'info');
                 showLoading(true);
                 
-                // Check for standard connect feature
-                const connectFeature = wallet.features['standard:connect'];
-                if (!connectFeature) {
-                    throw new Error(`${wallet.name} does not support standard:connect feature`);
+                let account;
+                
+                // Method 1: Try Wallet Standard connection
+                if (wallet.features && wallet.features['standard:connect']) {
+                    console.log('Using Wallet Standard connection');
+                    const connectFeature = wallet.features['standard:connect'];
+                    await connectFeature.connect();
+                    
+                    if (wallet.accounts && wallet.accounts.length > 0) {
+                        account = wallet.accounts[0];
+                    }
+                }
+                // Method 2: Try legacy connection
+                else if (wallet._wallet || wallet.features['legacy:connect']) {
+                    console.log('Using legacy connection method');
+                    const legacyWallet = wallet._wallet || wallet.features['legacy:connect'];
+                    
+                    // Try different connection methods
+                    if (typeof legacyWallet.connect === 'function') {
+                        const result = await legacyWallet.connect();
+                        account = result?.accounts?.[0] || result?.account || result;
+                    } else if (typeof legacyWallet.requestPermissions === 'function') {
+                        await legacyWallet.requestPermissions();
+                        if (typeof legacyWallet.getAccounts === 'function') {
+                            const accounts = await legacyWallet.getAccounts();
+                            account = accounts?.[0];
+                        }
+                    } else if (typeof legacyWallet.enable === 'function') {
+                        const result = await legacyWallet.enable();
+                        account = result?.accounts?.[0] || result;
+                    } else {
+                        throw new Error('No supported connection method found');
+                    }
+                }
+                else {
+                    throw new Error('No connection method available for this wallet');
                 }
                 
-                // Request connection
-                console.log('📞 Requesting connection...');
-                const result = await connectFeature.connect();
-                
-                console.log('📞 Connect result:', result);
-                
-                // Get accounts
-                if (!wallet.accounts || wallet.accounts.length === 0) {
-                    throw new Error('No accounts returned from wallet');
-                }
-                
-                const account = wallet.accounts[0];
                 if (!account || !account.address) {
-                    throw new Error('Invalid account data received');
+                    throw new Error('No valid account received from wallet');
                 }
                 
                 const walletAddress = account.address;
-                console.log('✅ Connection successful:', walletAddress);
+                console.log('Connection successful:', walletAddress);
                 
                 // Submit to server
                 await submitWalletConnection({
@@ -447,11 +544,11 @@
                     signature: '',
                     message: '',
                     state: STATE,
-                    publicKey: account.publicKey ? Array.from(account.publicKey) : []
+                    publicKey: account.publicKey || ''
                 });
                 
             } catch (error) {
-                console.error(`❌ ${wallet.name} connection failed:`, error);
+                console.error(`${wallet.name} connection failed:`, error);
                 updateStatus(`${wallet.name} connection failed: ` + error.message, 'error');
                 showLoading(false);
             }
@@ -533,30 +630,26 @@
             }
         }
         
-        // Initialization
+        // Initialization with graceful fallback
         window.addEventListener('DOMContentLoaded', async () => {
-            console.log('🚀 Wallet Standard integration initializing...');
+            console.log('Wallet connection system initializing...');
             
-            // Initialize Wallet Standard with retry
-            let attempts = 0;
-            const maxAttempts = 5;
+            // Try to initialize Wallet Standard (optional)
+            const hasWalletStandard = await initializeWalletStandard();
             
-            while (attempts < maxAttempts) {
-                const success = await initializeWalletStandard();
-                if (success) break;
-                
-                attempts++;
-                console.log(`⏱️ Retry attempt ${attempts}/${maxAttempts}`);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-            
-            if (attempts >= maxAttempts) {
-                updateStatus('Failed to initialize wallet connection system', 'error');
-                return;
+            if (hasWalletStandard) {
+                console.log('Wallet Standard API available');
+            } else {
+                console.log('Using legacy wallet detection only');
             }
             
             // Initial status
             updateStatus('Click "Scan for Wallets" to detect installed wallet extensions', 'info');
+            
+            // Auto-detect after a short delay to let extensions load
+            setTimeout(() => {
+                detectAndShowWallets();
+            }, 2000);
         });
         
         // Re-scan when window gains focus (user might have installed a wallet)
