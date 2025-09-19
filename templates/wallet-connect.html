@@ -256,7 +256,7 @@
         const detectedWallets = new Map();
         let debugLogs = [];
         
-        // Enhanced wallet detection configuration with fixed Nightly support
+        // Enhanced wallet detection configuration with fixed Nightly and Slush support
         const WALLET_CONFIGS = {
             suiet: {
                 name: 'Suiet Wallet',
@@ -265,12 +265,21 @@
                 icon: 'https://suiet.app/favicon.ico',
                 detectMethods: ['window', 'extension', 'standard']
             },
+            slush: {
+                name: 'Slush Wallet',
+                windowKeys: ['slush', 'slushWallet', '__slush__', 'suiWallet', 'sui', '__sui__'],
+                chromeExtensionId: 'opcgpfmipidbgpenhmajoajpbobppdil',
+                icon: 'https://slush.app/favicon.ico',
+                detectMethods: ['window', 'extension', 'standard'],
+                aliases: ['Sui Wallet'] // Since Slush is rebranded Sui Wallet
+            },
             sui: {
-                name: 'Sui Wallet',
+                name: 'Sui Wallet (Legacy)',
                 windowKeys: ['suiWallet', 'sui', '__sui__'],
                 chromeExtensionId: 'opcgpfmipidbgpenhmajoajpbobppdil',
                 icon: null,
-                detectMethods: ['window', 'extension', 'standard']
+                detectMethods: ['window', 'extension', 'standard'],
+                priority: 2 // Lower priority than Slush
             },
             martian: {
                 name: 'Martian Wallet',
@@ -318,11 +327,19 @@
             debugEl.scrollTop = debugEl.scrollHeight;
         }
         
-        // Enhanced Nightly Wallet detection
+        // Enhanced Slush/Nightly Wallet detection
         function isSuiWalletObject(wallet, windowKey) {
             if (!wallet) return false;
             
             const windowName = windowKey.toLowerCase();
+            
+            // Special handling for Slush Wallet (rebranded Sui Wallet)
+            if (windowName.includes('slush') || (windowName.includes('sui') && wallet.name?.toLowerCase().includes('slush'))) {
+                log(`🌊 Checking Slush Wallet structure for ${windowKey}`);
+                log(`Slush has connect method: ${typeof wallet.connect === 'function'}`);
+                log(`Slush wallet name: ${wallet.name || 'undefined'}`);
+                return true;
+            }
             
             // Special handling for Nightly Wallet
             if (windowName.includes('nightly')) {
@@ -354,7 +371,8 @@
             
             // Check for Sui-specific properties
             if (windowName.includes('sui') || windowName.includes('suiet') || 
-                windowName.includes('martian') || windowName.includes('nightly')) {
+                windowName.includes('martian') || windowName.includes('nightly') ||
+                windowName.includes('slush')) {
                 return true;
             }
             
@@ -390,6 +408,19 @@
             log('🔍 Scanning window objects...');
             let found = 0;
             
+            // First, let's do a comprehensive scan of ALL window properties to catch any we might miss
+            log('🔍 Comprehensive window property scan:');
+            const windowProps = Object.getOwnPropertyNames(window).filter(prop => {
+                const obj = window[prop];
+                return obj && typeof obj === 'object' && 
+                       (prop.toLowerCase().includes('wallet') || 
+                        prop.toLowerCase().includes('sui') ||
+                        prop.toLowerCase().includes('slush') ||
+                        prop.toLowerCase().includes('nightly') ||
+                        prop.toLowerCase().includes('martian'));
+            });
+            log('Found wallet-related window properties:', windowProps);
+            
             for (const [key, config] of Object.entries(WALLET_CONFIGS)) {
                 for (const windowKey of config.windowKeys) {
                     if (window[windowKey] && typeof window[windowKey] === 'object') {
@@ -411,6 +442,29 @@
                             found++;
                             break;
                         }
+                    }
+                }
+            }
+            
+            // Additional scan for any missed Slush wallet objects
+            const additionalSlushKeys = ['mysten', 'mystenlabs', 'SlushWallet', 'SuiWallet'];
+            for (const key of additionalSlushKeys) {
+                if (window[key] && typeof window[key] === 'object') {
+                    const wallet = window[key];
+                    if (isSuiWalletObject(wallet, key)) {
+                        log(`🌊 Found additional Slush wallet via window.${key}`);
+                        const suiWallet = extractSuiWalletInterface(wallet, key);
+                        
+                        addDetectedWallet('Slush Wallet', {
+                            name: 'Slush Wallet',
+                            version: 'window-detected',
+                            wallet: suiWallet,
+                            detectionMethod: 'window',
+                            windowKey: key,
+                            isMultiChain: false
+                        });
+                        found++;
+                        break;
                     }
                 }
             }
@@ -526,8 +580,54 @@
                 let account;
                 let connectionResult;
                 
+                // Enhanced Slush Wallet specific handling
+                if (config.name === 'Slush Wallet') {
+                    log('🌊 Using Slush Wallet specific connection flow');
+                    
+                    // Debug Slush wallet structure
+                    log('Slush wallet object keys:', Object.getOwnPropertyNames(wallet).filter(prop => typeof wallet[prop] === 'function'));
+                    log('Slush wallet name property:', wallet.name);
+                    log('Slush wallet version:', wallet.version);
+                    
+                    try {
+                        // Method 1: Standard Sui wallet connection (Slush follows Sui Wallet Standard)
+                        if (typeof wallet.connect === 'function') {
+                            log('Using wallet.connect() for Slush');
+                            connectionResult = await wallet.connect();
+                            account = connectionResult?.accounts?.[0] || connectionResult?.account || connectionResult;
+                        }
+                        // Method 2: Request permissions first
+                        else if (typeof wallet.requestPermissions === 'function') {
+                            log('Using wallet.requestPermissions() for Slush');
+                            await wallet.requestPermissions({
+                                permissions: ['viewAccount', 'suggestTransactions']
+                            });
+                            if (typeof wallet.getAccounts === 'function') {
+                                const accounts = await wallet.getAccounts();
+                                account = accounts?.[0];
+                            }
+                        }
+                        // Method 3: Direct getAccounts
+                        else if (typeof wallet.getAccounts === 'function') {
+                            log('Using wallet.getAccounts() for Slush');
+                            const accounts = await wallet.getAccounts();
+                            account = accounts?.[0];
+                        }
+                        
+                        log('Slush connection result:', {
+                            connectionResult: connectionResult ? 'received' : 'null',
+                            account: account ? 'found' : 'not found',
+                            accountAddress: account?.address || 'no address',
+                            accountType: typeof account
+                        });
+                        
+                    } catch (slushError) {
+                        log(`Slush-specific connection failed: ${slushError.message}`);
+                        throw slushError;
+                    }
+                }
                 // Enhanced Nightly Wallet specific handling
-                if (config.name === 'Nightly Wallet') {
+                else if (config.name === 'Nightly Wallet') {
                     log('🌙 Using Nightly Wallet specific connection flow');
                     
                     // Debug Nightly wallet structure
@@ -795,15 +895,16 @@
                     `<span class="version-badge">${method}</span>`
                 ).join(' ');
                 
-                // Special indicator for Nightly
-                const nightlyIndicator = name === 'Nightly Wallet' ? ' 🌙' : '';
+                // Special indicator for different wallets
+                const walletIndicator = name === 'Nightly Wallet' ? ' 🌙' : 
+                                      name === 'Slush Wallet' ? ' 🌊' : '';
                 
                 walletEl.innerHTML = `
                     <div style="display: flex; align-items: center;">
                         ${iconHtml}
                         <div>
                             <div class="wallet-name">
-                                ${config.name}${nightlyIndicator}
+                                ${config.name}${walletIndicator}
                                 <span class="version-badge">v${config.version}</span>
                             </div>
                             <div class="wallet-status">
