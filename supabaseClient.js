@@ -1,4 +1,5 @@
-// supabaseClient.js
+// supabaseClient.js 
+//  git add . && git commit -m "Wallet Fix" && git push origin main
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL;
