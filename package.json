@@ -12,8 +12,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@mysten/dapp-kit": "^0.18.0",
     "@mysten/sui": "^1.38.0",
-    "@mysten/wallet-standard": "^0.12.14",
+    "@mysten/wallet-standard": "^0.17.0",
     "@mysten/zklogin": "^0.8.1",
     "@suiet/wallet-kit": "^0.5.1",
     "@supabase/supabase-js": "^2.57.4",
