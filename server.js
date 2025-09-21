@@ -1,5 +1,5 @@
 // server.js - Refactored with external HTML template
-// git add . && git commit -m "Wallet Fix" && git push origin main
+// git add . && git commit -m "Smart Contract Tester" && git push origin main
 // server.js - Updated with Wallet Standard integration
 import express from "express";
 import bodyParser from "body-parser";
@@ -34,14 +34,32 @@ const app = express();
 const NETWORK_CONFIG = {
   current: process.env.SUI_NETWORK || 'testnet',
   devnet: 'https://fullnode.devnet.sui.io',
-  testnet: 'https://fullnode.testnet.sui.io', 
+  testnet: 'https://fullnode.testnet.sui.io',
   mainnet: 'https://fullnode.mainnet.sui.io'
 };
 
 // Initialize Sui Client
-const suiClient = new SuiClient({ 
-  url: getFullnodeUrl(NETWORK_CONFIG.current) 
+const suiClient = new SuiClient({
+  url: getFullnodeUrl(NETWORK_CONFIG.current)
 });
+
+const SUI_PACKAGE_ID = process.env.SUI_PACKAGE_ID || '';
+const GLOBAL_CONFIG_ID = process.env.GLOBAL_CONFIG_ID || '';
+const BINDER_REGISTRY_ID = process.env.BINDER_REGISTRY_ID || '';
+const COSMETICS_REGISTRY_ID = process.env.COSMETICS_REGISTRY_ID || '';
+const CATALOG_REGISTRY_ID = process.env.CATALOG_REGISTRY_ID || '';
+const CARD_REGISTRY_ID = process.env.CARD_REGISTRY_ID || '';
+const CLOCK_ID = process.env.CLOCK_ID || '';
+const RANDOM_ID = process.env.RANDOM_ID || '';
+
+// Helper to check if contract addresses are set
+function requireContractIds(res) {
+  if (!SUI_PACKAGE_ID || !GLOBAL_CONFIG_ID || !BINDER_REGISTRY_ID) {
+    res.status(500).json({ success: false, error: "Sui contract addresses not configured." });
+    return false;
+  }
+  return true;
+}
 
 console.log(`Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()} network`);
 
@@ -50,7 +68,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
+
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
   } else {
@@ -81,13 +99,13 @@ function loadTemplate(templateName, replacements = {}) {
   try {
     const templatePath = join(__dirname, 'templates', templateName);
     let template = readFileSync(templatePath, 'utf8');
-    
+
     // Replace placeholders with actual values
     for (const [placeholder, value] of Object.entries(replacements)) {
       const regex = new RegExp(`{{${placeholder}}}`, 'g');
       template = template.replace(regex, value);
     }
-    
+
     return template;
   } catch (error) {
     console.error(`Error loading template ${templateName}:`, error);
@@ -106,11 +124,11 @@ app.get("/wallet-connect", (req, res) => {
 // Enhanced wallet connection endpoint with Wallet Standard support
 app.post("/auth/wallet-connect", async (req, res) => {
   console.log("🔗 Wallet Standard connection request received");
-  
+
   try {
     const connectionData = req.body;
     const { walletAddress, walletName, state } = connectionData;
-    
+
     // Basic validation
     if (!state) {
       console.log("Missing state parameter");
@@ -119,28 +137,28 @@ app.post("/auth/wallet-connect", async (req, res) => {
         error: "Missing state parameter"
       });
     }
-    
-      const validation = validateWalletConnection(connectionData);
-      if (!validation.valid) {
-        console.log("Wallet validation failed:", validation.error);
-        return res.status(400).json({
-          success: false,
-          error: validation.error
-        });
-      }
-    
+
+    const validation = validateWalletConnection(connectionData);
+    if (!validation.valid) {
+      console.log("Wallet validation failed:", validation.error);
+      return res.status(400).json({
+        success: false,
+        error: validation.error
+      });
+    }
+
     const { normalizedWalletName, walletInfo } = validation;
     const authMethod = getWalletAuthMethod(normalizedWalletName);
-    
-      console.log(`Valid wallet connection: ${formatWalletConnectionLog(connectionData)}`);
-      console.log(`Auth method: ${authMethod} (${walletInfo.name})`);
-    
+
+    console.log(`Valid wallet connection: ${formatWalletConnectionLog(connectionData)}`);
+    console.log(`Auth method: ${authMethod} (${walletInfo.name})`);
+
     // Validate public key if provided
     if (connectionData.publicKey && !validatePublicKey(connectionData.publicKey)) {
       console.warn("Invalid public key format provided, ignoring");
       delete connectionData.publicKey;
     }
-    
+
     // Check blockchain status with enhanced error handling
     let blockchainInfo = {
       exists: false,
@@ -149,10 +167,10 @@ app.post("/auth/wallet-connect", async (req, res) => {
       network: NETWORK_CONFIG.current,
       error: null
     };
-    
+
     try {
       console.log('🔗 Verifying wallet on blockchain...');
-      
+
       const [balance, objects] = await Promise.all([
         suiClient.getBalance({
           owner: walletAddress,
@@ -163,7 +181,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
           limit: 1
         })
       ]);
-      
+
       blockchainInfo = {
         exists: true,
         balance: balance.totalBalance,
@@ -171,69 +189,69 @@ app.post("/auth/wallet-connect", async (req, res) => {
         hasActivity: parseInt(balance.totalBalance) > 0 || objects.data.length > 0,
         network: NETWORK_CONFIG.current
       };
-      
-        console.log(`Blockchain verified: ${blockchainInfo.balanceFormatted}`);
-      
+
+      console.log(`Blockchain verified: ${blockchainInfo.balanceFormatted}`);
+
     } catch (blockchainError) {
-        console.log(`Blockchain verification failed: ${blockchainError.message}`);
+      console.log(`Blockchain verification failed: ${blockchainError.message}`);
       blockchainInfo.error = blockchainError.message;
     }
-    
+
     // Check for existing user profile
     let { data: existingProfile, error: queryError } = await supabase
       .from("user_profiles")
       .select("*")
       .eq("sui_address", walletAddress)
       .single();
-    
+
     if (queryError && queryError.code !== 'PGRST116') {
-        console.error("Database query error:", queryError);
-      return res.status(500).json({ 
+      console.error("Database query error:", queryError);
+      return res.status(500).json({
         success: false,
-        error: "Database query failed" 
+        error: "Database query failed"
       });
     }
-    
+
     let finalProfile;
     let isNewUser = false;
-    
+
     if (existingProfile) {
-        console.log("Found existing user profile:", existingProfile.id);
-      
+      console.log("Found existing user profile:", existingProfile.id);
+
       // Update existing profile with new connection info
       const updateData = {
         updated_at: new Date().toISOString(),
         auth_method: authMethod
       };
-      
+
       // Update wallet name if it's more specific than stored
-      if (walletInfo.name !== 'Manual Entry' && 
-          (!existingProfile.wallet_name || existingProfile.wallet_name === 'manual')) {
+      if (walletInfo.name !== 'Manual Entry' &&
+        (!existingProfile.wallet_name || existingProfile.wallet_name === 'manual')) {
         updateData.wallet_name = normalizedWalletName;
       }
-      
+
       const { data: updated, error: updateError } = await supabase
         .from("user_profiles")
         .update(updateData)
         .eq("id", existingProfile.id)
         .select()
         .single();
-        
+
       if (updateError) {
-          console.error("Profile update error:", updateError);
-        return res.status(500).json({ 
+        console.error("Profile update error:", updateError);
+        return res.status(500).json({
           success: false,
-          error: "Profile update failed" 
+          error: "Profile update failed"
         });
       }
-      
+
       finalProfile = updated;
-        console.log("Existing user profile updated");
+      console.log("Existing user profile updated");
     } else {
-        console.log("Creating new user profile for wallet connection");
-      
+      console.log("Creating new user profile for wallet connection");
+
       const tempName = generateTempUsername(walletAddress);
-      
+
       const profileData = {
         email: null,
         google_id: null,
@@ -246,31 +264,31 @@ app.post("/auth/wallet-connect", async (req, res) => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
-      
-        console.log("Profile data to insert:", JSON.stringify(profileData, null, 2));
-      
+
+      console.log("Profile data to insert:", JSON.stringify(profileData, null, 2));
+
       const { data: inserted, error: insertError } = await supabase
         .from("user_profiles")
         .insert([profileData])
         .select()
         .single();
-        
+
       if (insertError) {
-          console.error("Profile insert error:", insertError);
-        return res.status(500).json({ 
+        console.error("Profile insert error:", insertError);
+        return res.status(500).json({
           success: false,
-          error: "Profile creation failed: " + insertError.message 
+          error: "Profile creation failed: " + insertError.message
         });
       }
-      
+
       finalProfile = inserted;
       isNewUser = true;
-        console.log("New user profile created:", finalProfile.id);
+      console.log("New user profile created:", finalProfile.id);
     }
-    
+
     const requiresUsername = needsUsernameSetup(finalProfile.name);
     console.log(`Username setup needed: ${requiresUsername}`);
-    
+
     // Create session for Unity polling
     const sessionData = {
       id: finalProfile.id,
@@ -283,11 +301,11 @@ app.post("/auth/wallet-connect", async (req, res) => {
       profileId: finalProfile.id,
       needsUsernameSetup: requiresUsername
     };
-    
+
     // Store session for Unity polling
     sessions[state] = sessionData;
-      console.log("Session stored with state:", state);
-    
+    console.log("Session stored with state:", state);
+
     const responseData = {
       success: true,
       message: isNewUser ? "New wallet connected successfully" : "Wallet reconnected successfully",
@@ -313,15 +331,15 @@ app.post("/auth/wallet-connect", async (req, res) => {
         version: "1.0.3"
       }
     };
-    
-      console.log("Sending success response");
+
+    console.log("Sending success response");
     res.json(responseData);
-    
+
   } catch (err) {
-      console.error("Wallet connection error:", err);
-    res.status(500).json({ 
+    console.error("Wallet connection error:", err);
+    res.status(500).json({
       success: false,
-      error: "Wallet connection failed: " + err.message 
+      error: "Wallet connection failed: " + err.message
     });
   }
 });
@@ -329,7 +347,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
 // Enhanced username setup endpoint
 app.post("/setup-username", async (req, res) => {
   const { walletAddress, username } = req.body;
-  
+
   try {
     if (!walletAddress || !username) {
       return res.status(400).json({
@@ -337,7 +355,7 @@ app.post("/setup-username", async (req, res) => {
         error: "Wallet address and username are required"
       });
     }
-    
+
     // Validate wallet address
     if (!isValidSuiAddress(walletAddress)) {
       return res.status(400).json({
@@ -345,9 +363,9 @@ app.post("/setup-username", async (req, res) => {
         error: "Invalid Sui address format"
       });
     }
-    
+
     const trimmedUsername = username.trim();
-    
+
     // Username validation
     if (trimmedUsername.length < 3 || trimmedUsername.length > 20) {
       return res.status(400).json({
@@ -355,14 +373,14 @@ app.post("/setup-username", async (req, res) => {
         error: "Username must be between 3 and 20 characters"
       });
     }
-    
+
     if (!/^[a-zA-Z0-9_-]+$/.test(trimmedUsername)) {
       return res.status(400).json({
         success: false,
         error: "Username can only contain letters, numbers, underscore, and hyphen"
       });
     }
-    
+
     // Check for username conflicts
     const { data: existingUser, error: checkError } = await supabase
       .from("user_profiles")
@@ -370,25 +388,25 @@ app.post("/setup-username", async (req, res) => {
       .eq("name", trimmedUsername)
       .neq("sui_address", walletAddress)
       .single();
-    
+
     if (existingUser) {
       return res.status(400).json({
         success: false,
         error: "Username already taken"
       });
     }
-    
+
     // Update username
     const { data: updatedProfile, error: updateError } = await supabase
       .from("user_profiles")
-      .update({ 
+      .update({
         name: trimmedUsername,
         updated_at: new Date().toISOString()
       })
       .eq("sui_address", walletAddress)
       .select()
       .single();
-      
+
     if (updateError) {
       console.error("Username update error:", updateError);
       return res.status(500).json({
@@ -396,9 +414,9 @@ app.post("/setup-username", async (req, res) => {
         error: "Failed to update username"
       });
     }
-    
-      console.log(`Username updated: ${walletAddress} -> ${trimmedUsername}`);
-    
+
+    console.log(`Username updated: ${walletAddress} -> ${trimmedUsername}`);
+
     res.json({
       success: true,
       message: "Username updated successfully",
@@ -412,7 +430,7 @@ app.post("/setup-username", async (req, res) => {
         needsUsernameSetup: false
       }
     });
-    
+
   } catch (err) {
     console.error("Username setup error:", err);
     res.status(500).json({
@@ -424,185 +442,185 @@ app.post("/setup-username", async (req, res) => {
 
 // Google OAuth callback (unchanged)
 app.get("/auth/google/callback", async (req, res) => {
-    const { code, state } = req.query;
-    
-    if (!code) {
-        console.error("No authorization code received");
-        return res.status(400).send("Authorization failed - no code");
+  const { code, state } = req.query;
+
+  if (!code) {
+    console.error("No authorization code received");
+    return res.status(400).send("Authorization failed - no code");
+  }
+
+  try {
+    console.log("Processing Google OAuth callback...");
+
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: process.env.REDIRECT_URI,
+        grant_type: "authorization_code"
+      })
+    });
+
+    const tokens = await tokenResponse.json();
+    if (!tokens.id_token) {
+      throw new Error("No ID token received");
     }
+
+    const userInfo = jwtDecode(tokens.id_token);
+    console.log("User info:", {
+      sub: userInfo.sub,
+      email: userInfo.email,
+      name: userInfo.name
+    });
+
+    let profile;
+    let isNewUser = false;
+
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("google_id", userInfo.sub)
+      .single();
+
+    if (existingProfile) {
+      console.log("Existing zkLogin user found - checking if username needs preservation");
+
+      const hasCustomUsername = existingProfile.name &&
+        !existingProfile.name.startsWith('Player_') &&
+        existingProfile.name !== userInfo.name;
+
+      console.log(`Existing name: "${existingProfile.name}"`);
+      console.log(`Google name: "${userInfo.name}"`);
+      console.log(`Has custom username: ${hasCustomUsername}`);
+
+      const updateData = {
+        updated_at: new Date().toISOString(),
+        picture: userInfo.picture,
+        email: userInfo.email
+      };
+
+      if (!hasCustomUsername) {
+        updateData.name = userInfo.name;
+        console.log("No custom username detected - updating name from Google profile");
+      } else {
+        console.log("Custom username detected - preserving existing name");
+      }
+
+      const { data: updatedProfile, error: updateError } = await supabase
+        .from("user_profiles")
+        .update(updateData)
+        .eq("id", existingProfile.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.error("Profile update error:", updateError);
+        throw new Error("Profile update failed");
+      }
+
+      profile = updatedProfile;
+      console.log(`Final profile name: "${profile.name}"`);
+      console.log(`Retrieved existing Sui address: ${profile.sui_address}`);
+
+    } else {
+      console.log("New zkLogin user - creating profile");
+
+      const userSalt = generateRandomness();
+      const suiAddress = jwtToAddress(tokens.id_token, userSalt);
+      console.log("Generated new Sui address:", suiAddress);
+
+      const profileData = {
+        email: userInfo.email,
+        google_id: userInfo.sub,
+        name: userInfo.name,
+        picture: userInfo.picture,
+        user_salt: userSalt,
+        sui_address: suiAddress,
+        auth_method: "zklogin",
+        wallet_name: "zklogin",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: insertedProfile, error: insertError } = await supabase
+        .from("user_profiles")
+        .insert([profileData])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("Profile insert error:", insertError);
+        throw new Error("Profile creation failed");
+      }
+
+      profile = insertedProfile;
+      isNewUser = true;
+    }
+
+    const requiresUsername = needsUsernameSetup(profile.name);
+
+    sessions[state] = {
+      id: userInfo.sub,
+      email: userInfo.email,
+      name: profile.name,
+      picture: userInfo.picture,
+      suiWallet: profile.sui_address,
+      authMethod: "zklogin",
+      walletName: "zklogin",
+      profileId: profile.id,
+      sub: userInfo.sub,
+      aud: userInfo.aud,
+      needsUsernameSetup: requiresUsername
+    };
 
     try {
-        console.log("Processing Google OAuth callback...");
-        
-        const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-                code,
-                client_id: process.env.GOOGLE_CLIENT_ID,
-                client_secret: process.env.GOOGLE_CLIENT_SECRET,
-                redirect_uri: process.env.REDIRECT_URI,
-                grant_type: "authorization_code"
-            })
-        });
-
-        const tokens = await tokenResponse.json();
-        if (!tokens.id_token) {
-            throw new Error("No ID token received");
-        }
-
-        const userInfo = jwtDecode(tokens.id_token);
-        console.log("User info:", {
-            sub: userInfo.sub,
-            email: userInfo.email,
-            name: userInfo.name
-        });
-
-        let profile;
-        let isNewUser = false;
-
-        const { data: existingProfile, error: fetchError } = await supabase
-            .from("user_profiles")
-            .select("*")
-            .eq("google_id", userInfo.sub)
-            .single();
-
-        if (existingProfile) {
-            console.log("Existing zkLogin user found - checking if username needs preservation");
-            
-            const hasCustomUsername = existingProfile.name && 
-                                    !existingProfile.name.startsWith('Player_') &&
-                                    existingProfile.name !== userInfo.name;
-            
-            console.log(`Existing name: "${existingProfile.name}"`);
-            console.log(`Google name: "${userInfo.name}"`);
-            console.log(`Has custom username: ${hasCustomUsername}`);
-            
-            const updateData = {
-                updated_at: new Date().toISOString(),
-                picture: userInfo.picture,
-                email: userInfo.email
-            };
-            
-            if (!hasCustomUsername) {
-                updateData.name = userInfo.name;
-                console.log("No custom username detected - updating name from Google profile");
-            } else {
-                console.log("Custom username detected - preserving existing name");
-            }
-
-            const { data: updatedProfile, error: updateError } = await supabase
-                .from("user_profiles")
-                .update(updateData)
-                .eq("id", existingProfile.id)
-                .select()
-                .single();
-
-            if (updateError) {
-                console.error("Profile update error:", updateError);
-                throw new Error("Profile update failed");
-            }
-
-            profile = updatedProfile;
-            console.log(`Final profile name: "${profile.name}"`);
-            console.log(`Retrieved existing Sui address: ${profile.sui_address}`);
-            
-        } else {
-            console.log("New zkLogin user - creating profile");
-            
-            const userSalt = generateRandomness();
-            const suiAddress = jwtToAddress(tokens.id_token, userSalt);
-            console.log("Generated new Sui address:", suiAddress);
-
-            const profileData = {
-                email: userInfo.email,
-                google_id: userInfo.sub,
-                name: userInfo.name,
-                picture: userInfo.picture,
-                user_salt: userSalt,
-                sui_address: suiAddress,
-                auth_method: "zklogin",
-                wallet_name: "zklogin",
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            };
-
-            const { data: insertedProfile, error: insertError } = await supabase
-                .from("user_profiles")
-                .insert([profileData])
-                .select()
-                .single();
-
-            if (insertError) {
-                console.error("Profile insert error:", insertError);
-                throw new Error("Profile creation failed");
-            }
-
-            profile = insertedProfile;
-            isNewUser = true;
-        }
-
-        const requiresUsername = needsUsernameSetup(profile.name);
-
-        sessions[state] = {
-            id: userInfo.sub,
-            email: userInfo.email,
-            name: profile.name,
-            picture: userInfo.picture,
-            suiWallet: profile.sui_address,
-            authMethod: "zklogin",
-            walletName: "zklogin",
-            profileId: profile.id,
-            sub: userInfo.sub,
-            aud: userInfo.aud,
-            needsUsernameSetup: requiresUsername
-        };
-
-        try {
-            console.log("Checking Sui balance for zkLogin user...");
-            const balance = await suiClient.getBalance({
-                owner: profile.sui_address,
-                coinType: '0x2::sui::SUI'
-            });
-            const formattedBalance = (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4);
-            console.log("Sui Balance: " + formattedBalance + " SUI (" + balance.totalBalance + " MIST)");
-        } catch (balanceError) {
-            console.log("Could not fetch balance: " + balanceError.message + " (This is normal for new addresses)");
-        }
-
-        console.log("zkLogin successful for " + userInfo.email + " - " + (isNewUser ? 'New user created' : 'Existing user logged in'));
-        
-        const welcomeMessage = isNewUser ?
-            "Welcome to the game, " + profile.name + "!" :
-            "Welcome back, " + profile.name + "!";
-
-        // Load success template
-        const html = loadTemplate('zklogin-success.html', {
-            WELCOME_MESSAGE: welcomeMessage,
-            SUI_ADDRESS: profile.sui_address
-        });
-
-        res.send(html);
-
-    } catch (err) {
-        console.error("OAuth callback error:", err);
-        
-        // Load error template
-        const html = loadTemplate('auth-error.html', {
-            ERROR_MESSAGE: err.message
-        });
-
-        res.status(500).send(html);
+      console.log("Checking Sui balance for zkLogin user...");
+      const balance = await suiClient.getBalance({
+        owner: profile.sui_address,
+        coinType: '0x2::sui::SUI'
+      });
+      const formattedBalance = (parseInt(balance.totalBalance) / 1_000_000_000).toFixed(4);
+      console.log("Sui Balance: " + formattedBalance + " SUI (" + balance.totalBalance + " MIST)");
+    } catch (balanceError) {
+      console.log("Could not fetch balance: " + balanceError.message + " (This is normal for new addresses)");
     }
+
+    console.log("zkLogin successful for " + userInfo.email + " - " + (isNewUser ? 'New user created' : 'Existing user logged in'));
+
+    const welcomeMessage = isNewUser ?
+      "Welcome to the game, " + profile.name + "!" :
+      "Welcome back, " + profile.name + "!";
+
+    // Load success template
+    const html = loadTemplate('zklogin-success.html', {
+      WELCOME_MESSAGE: welcomeMessage,
+      SUI_ADDRESS: profile.sui_address
+    });
+
+    res.send(html);
+
+  } catch (err) {
+    console.error("OAuth callback error:", err);
+
+    // Load error template
+    const html = loadTemplate('auth-error.html', {
+      ERROR_MESSAGE: err.message
+    });
+
+    res.status(500).send(html);
+  }
 });
 
 // Enhanced wallet validation endpoint
 app.post("/validate-wallet", async (req, res) => {
   console.log("🔍 Wallet validation request received");
-  
+
   try {
     const { address } = req.body;
-    
+
     if (!address) {
       console.log("No address provided");
       return res.status(400).json({
@@ -611,24 +629,24 @@ app.post("/validate-wallet", async (req, res) => {
         message: "No wallet address provided"
       });
     }
-    
+
     const cleanAddress = address.trim();
     console.log(`🔍 Validating address: ${cleanAddress}`);
-    
+
     const isValidFormat = isValidSuiAddress(cleanAddress);
     console.log(`Address format validation: ${isValidFormat}`);
-    
+
     let blockchainInfo = {
       exists: false,
       balance: '0',
       hasActivity: false,
       error: null
     };
-    
+
     if (isValidFormat) {
       try {
         console.log('🔗 Checking blockchain status...');
-        
+
         const [balance, objects] = await Promise.all([
           suiClient.getBalance({
             owner: cleanAddress,
@@ -639,7 +657,7 @@ app.post("/validate-wallet", async (req, res) => {
             limit: 1
           })
         ]);
-        
+
         blockchainInfo = {
           exists: true,
           balance: balance.totalBalance,
@@ -647,22 +665,22 @@ app.post("/validate-wallet", async (req, res) => {
           hasActivity: parseInt(balance.totalBalance) > 0 || objects.data.length > 0,
           network: NETWORK_CONFIG.current
         };
-        
+
         console.log(`Blockchain info:`, blockchainInfo);
-        
+
       } catch (blockchainError) {
         console.log(`Blockchain check failed: ${blockchainError.message}`);
         blockchainInfo.error = blockchainError.message;
       }
     }
-    
+
     const responseData = {
       valid: isValidFormat,
       address: cleanAddress,
-      message: isValidFormat 
-        ? (blockchainInfo.exists 
-           ? `Valid Sui address (Balance: ${blockchainInfo.balanceFormatted})` 
-           : 'Valid Sui address (Not yet active on blockchain)')
+      message: isValidFormat
+        ? (blockchainInfo.exists
+          ? `Valid Sui address (Balance: ${blockchainInfo.balanceFormatted})`
+          : 'Valid Sui address (Not yet active on blockchain)')
         : "Invalid Sui address format",
       blockchain: blockchainInfo,
       network: NETWORK_CONFIG.current,
@@ -671,10 +689,10 @@ app.post("/validate-wallet", async (req, res) => {
         version: "1.0.3"
       }
     };
-    
+
     console.log("Sending validation response:", responseData);
     res.json(responseData);
-    
+
   } catch (err) {
     console.error("Validation error:", err);
     res.status(500).json({
@@ -684,6 +702,130 @@ app.post("/validate-wallet", async (req, res) => {
     });
   }
 });
+
+app.post("/create-binder", async (req, res) => {
+  if (!requireContractIds(res)) return;
+
+  const { walletAddress, username, displayName } = req.body;
+  if (!walletAddress || !username || !displayName) {
+    return res.status(400).json({ success: false, error: "Missing required fields." });
+  }
+
+  try {
+    // Validate username/displayName here if needed
+
+    // Construct Move transaction
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::binder_actions::new`,
+      arguments: [
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(COSMETICS_REGISTRY_ID),
+        tx.object(BINDER_REGISTRY_ID),
+        tx.pure.string(username),
+        tx.pure.string(displayName),
+      ],
+    });
+
+    // NOTE: You must sign with the user's wallet or a backend keypair with permission
+    // For demo, just return the transaction block (do not sign/execute)
+    // In production, you must handle signing securely
+
+    res.json({
+      success: true,
+      message: "Binder creation transaction prepared.",
+      txBlock: tx.serialize(), // or tx.blockData if using Sui SDK v0.52+
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+app.post("/buy-booster", async (req, res) => {
+  if (!requireContractIds(res)) return;
+
+  const { walletAddress, binderId, boosterPackSerial, price, coinType } = req.body;
+  if (!walletAddress || !binderId || !boosterPackSerial || !price || !coinType) {
+    return res.status(400).json({ success: false, error: "Missing required fields." });
+  }
+
+  try {
+    const tx = new Transaction();
+    // Split coin for payment (assumes tx.gas is user's SUI coin object)
+    const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(price)]);
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::booster::buy_booster_pack`,
+      typeArguments: [coinType],
+      arguments: [
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(CATALOG_REGISTRY_ID),
+        tx.object(binderId),
+        tx.pure.string(boosterPackSerial),
+        paymentCoin,
+        tx.object(CLOCK_ID),
+      ],
+    });
+
+    res.json({
+      success: true,
+      message: "Booster pack purchase transaction prepared.",
+      txBlock: tx.serialize(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+app.post("/open-booster", async (req, res) => {
+  if (!requireContractIds(res)) return;
+
+  const { walletAddress, binderId, boosterPackSerial } = req.body;
+  if (!walletAddress || !binderId || !boosterPackSerial) {
+    return res.status(400).json({ success: false, error: "Missing required fields." });
+  }
+
+  try {
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::booster::open_booster`,
+      arguments: [
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(CATALOG_REGISTRY_ID),
+        tx.object(CARD_REGISTRY_ID),
+        tx.object(binderId),
+        tx.pure.string(boosterPackSerial),
+        tx.object(RANDOM_ID),
+        tx.object(CLOCK_ID),
+      ],
+    });
+
+    res.json({
+      success: true,
+      message: "Open booster transaction prepared.",
+      txBlock: tx.serialize(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Contract IDs endpoint (unchanged, commented out for security) -- Optional
+// app.get("/contract-ids", (req, res) => {
+//   res.json({
+//     SUI_PACKAGE_ID,
+//     GLOBAL_CONFIG_ID,
+//     BINDER_REGISTRY_ID,
+//     COSMETICS_REGISTRY_ID,
+//     CATALOG_REGISTRY_ID,
+//     CARD_REGISTRY_ID,
+//     CLOCK_ID,
+//     RANDOM_ID,
+//   });
+// });
+
+
 
 // Unity polling endpoint (unchanged)
 app.get("/getProfile", (req, res) => {
@@ -729,5 +871,5 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Connected to Sui ${NETWORK_CONFIG.current.toUpperCase()}`);
   console.log(`RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
-    console.log(`Wallet Standard integration: ENABLED`);
+  console.log(`Wallet Standard integration: ENABLED`);
 });
