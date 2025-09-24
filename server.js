@@ -1,4 +1,3 @@
-// server.js - Refactored with external HTML template
 // git add . && git commit -m "Smart Contract Tester" && git push origin main
 // server.js - Updated with Wallet Standard integration
 import express from "express";
@@ -342,6 +341,22 @@ app.post("/auth/wallet-connect", async (req, res) => {
       error: "Wallet connection failed: " + err.message
     });
   }
+});
+
+// Add this to your server.js for testing
+app.get("/contract-status", (req, res) => {
+  res.json({
+    network: NETWORK_CONFIG.current,
+    contracts: {
+      SUI_PACKAGE_ID: SUI_PACKAGE_ID || 'NOT_SET',
+      GLOBAL_CONFIG_ID: GLOBAL_CONFIG_ID || 'NOT_SET',
+      BINDER_REGISTRY_ID: BINDER_REGISTRY_ID || 'NOT_SET',
+      COSMETICS_REGISTRY_ID: COSMETICS_REGISTRY_ID || 'NOT_SET',
+      CATALOG_REGISTRY_ID: CATALOG_REGISTRY_ID || 'NOT_SET',
+      CARD_REGISTRY_ID: CARD_REGISTRY_ID || 'NOT_SET',
+    },
+    configured: !!(SUI_PACKAGE_ID && GLOBAL_CONFIG_ID && BINDER_REGISTRY_ID)
+  });
 });
 
 // Enhanced username setup endpoint
