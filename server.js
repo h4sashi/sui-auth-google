@@ -346,7 +346,7 @@ app.post("/auth/wallet-connect", async (req, res) => {
 // Update your existing server.js prepare-signing endpoint
 app.post("/prepare-signing", async (req, res) => {
   const { walletAddress, txBytes, operationType, description } = req.body;
-
+  
   if (!walletAddress || !txBytes || !operationType) {
     return res.status(400).json({
       success: false,
@@ -356,7 +356,7 @@ app.post("/prepare-signing", async (req, res) => {
 
   try {
     const signingId = generateRandomId();
-
+    
     // Store signing request
     signingRequests[signingId] = {
       walletAddress,
@@ -402,10 +402,10 @@ app.post("/buy-booster", async (req, res) => {
 
   try {
     const tx = new Transaction();
-
+    
     // Split coin for payment
     const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(price)]);
-
+    
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::buy_booster_pack`,
       typeArguments: [coinType],
@@ -444,12 +444,12 @@ app.post("/buy-booster", async (req, res) => {
         note: "Transaction must be signed by the wallet owner"
       }
     });
-
+    
   } catch (err) {
     console.error("Buy booster preparation error:", err);
-    res.status(500).json({
-      success: false,
-      error: `Transaction preparation failed: ${err.message}`
+    res.status(500).json({ 
+      success: false, 
+      error: `Transaction preparation failed: ${err.message}` 
     });
   }
 });
@@ -465,6 +465,10 @@ app.post("/create-binder", async (req, res) => {
 
   try {
     const tx = new Transaction();
+    
+    // Set the sender address
+    tx.setSender(walletAddress);
+    
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::binder_actions::new`,
       arguments: [
@@ -501,12 +505,13 @@ app.post("/create-binder", async (req, res) => {
     });
   } catch (err) {
     console.error("Create binder preparation error:", err);
-    res.status(500).json({
-      success: false,
-      error: `Transaction preparation failed: ${err.message}`
+    res.status(500).json({ 
+      success: false, 
+      error: `Transaction preparation failed: ${err.message}` 
     });
   }
 });
+
 
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
@@ -547,7 +552,7 @@ app.post("/open-booster", async (req, res) => {
       txBytes: Array.from(txBytes),
       instructions: {
         next_steps: [
-          "Sign the transaction with your wallet",
+          "Sign the transaction with your wallet", 
           "Submit the signed transaction for execution"
         ],
         estimated_gas: "Gas will be calculated during signing",
@@ -556,9 +561,9 @@ app.post("/open-booster", async (req, res) => {
     });
   } catch (err) {
     console.error("Open booster preparation error:", err);
-    res.status(500).json({
-      success: false,
-      error: `Transaction preparation failed: ${err.message}`
+    res.status(500).json({ 
+      success: false, 
+      error: `Transaction preparation failed: ${err.message}` 
     });
   }
 });
