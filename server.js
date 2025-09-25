@@ -198,14 +198,15 @@ app.post("/auth/wallet-connect", async (req, res) => {
       blockchainInfo.error = blockchainError.message;
     }
 
-    // Check for existing user profile
+    // CRITICAL: Check for existing user profile with proper query
+    // This is the main fix for duplicate users
     let { data: existingProfile, error: queryError } = await supabase
       .from("user_profiles")
       .select("*")
       .eq("sui_address", walletAddress)
-      .single();
+      .maybeSingle(); // Use maybeSingle() instead of single() to avoid errors when no rows found
 
-    if (queryError && queryError.code !== 'PGRST116') {
+    if (queryError) {
       console.error("Database query error:", queryError);
       return res.status(500).json({
         success: false,
@@ -222,7 +223,8 @@ app.post("/auth/wallet-connect", async (req, res) => {
       // Update existing profile with new connection info
       const updateData = {
         updated_at: new Date().toISOString(),
-        auth_method: authMethod
+        auth_method: authMethod,
+        last_login: new Date().toISOString() // Track last login
       };
 
       // Update wallet name if it's more specific than stored
@@ -251,40 +253,64 @@ app.post("/auth/wallet-connect", async (req, res) => {
     } else {
       console.log("Creating new user profile for wallet connection");
 
-      const tempName = generateTempUsername(walletAddress);
-
-      const profileData = {
-        email: null,
-        google_id: null,
-        name: tempName,
-        picture: null,
-        user_salt: null,
-        sui_address: walletAddress,
-        auth_method: authMethod,
-        wallet_name: normalizedWalletName,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      console.log("Profile data to insert:", JSON.stringify(profileData, null, 2));
-
-      const { data: inserted, error: insertError } = await supabase
+      // Double-check to prevent race conditions
+      const { data: raceCheck } = await supabase
         .from("user_profiles")
-        .insert([profileData])
-        .select()
-        .single();
+        .select("id")
+        .eq("sui_address", walletAddress)
+        .maybeSingle();
 
-      if (insertError) {
-        console.error("Profile insert error:", insertError);
-        return res.status(500).json({
-          success: false,
-          error: "Profile creation failed: " + insertError.message
-        });
+      if (raceCheck) {
+        console.log("Race condition detected - user was created by another request");
+        finalProfile = raceCheck;
+      } else {
+        const tempName = generateTempUsername(walletAddress);
+
+        const profileData = {
+          email: null,
+          google_id: null,
+          name: tempName,
+          picture: null,
+          user_salt: null,
+          sui_address: walletAddress,
+          auth_method: authMethod,
+          wallet_name: normalizedWalletName,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_login: new Date().toISOString()
+        };
+
+        console.log("Profile data to insert:", JSON.stringify(profileData, null, 2));
+
+        const { data: inserted, error: insertError } = await supabase
+          .from("user_profiles")
+          .insert([profileData])
+          .select()
+          .single();
+
+        if (insertError) {
+          // Check if it's a unique constraint violation (duplicate)
+          if (insertError.code === '23505') {
+            console.log("Unique constraint violation - fetching existing user");
+            const { data: existing } = await supabase
+              .from("user_profiles")
+              .select("*")
+              .eq("sui_address", walletAddress)
+              .single();
+            finalProfile = existing;
+          } else {
+            console.error("Profile insert error:", insertError);
+            return res.status(500).json({
+              success: false,
+              error: "Profile creation failed: " + insertError.message
+            });
+          }
+        } else {
+          finalProfile = inserted;
+          isNewUser = true;
+          console.log("New user profile created:", finalProfile.id);
+        }
       }
-
-      finalProfile = inserted;
-      isNewUser = true;
-      console.log("New user profile created:", finalProfile.id);
     }
 
     const requiresUsername = needsUsernameSetup(finalProfile.name);
@@ -300,11 +326,15 @@ app.post("/auth/wallet-connect", async (req, res) => {
       authMethod: authMethod,
       walletName: normalizedWalletName,
       profileId: finalProfile.id,
-      needsUsernameSetup: requiresUsername
+      needsUsernameSetup: requiresUsername,
+      timestamp: new Date().toISOString()
     };
 
-    // Store session for Unity polling
-    sessions[state] = sessionData;
+    // Store session for Unity polling with expiration
+    sessions[state] = {
+      ...sessionData,
+      expiresAt: Date.now() + (30 * 60 * 1000) // 30 minutes
+    };
     console.log("Session stored with state:", state);
 
     const responseData = {
@@ -480,11 +510,17 @@ app.get("/auth/google/callback", async (req, res) => {
     let profile;
     let isNewUser = false;
 
+    // CRITICAL: Use proper query with maybeSingle() to prevent duplicate creation
     const { data: existingProfile, error: fetchError } = await supabase
       .from("user_profiles")
       .select("*")
       .eq("google_id", userInfo.sub)
-      .single();
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("Database query error:", fetchError);
+      throw new Error("Database query failed");
+    }
 
     if (existingProfile) {
       console.log("Existing zkLogin user found - checking if username needs preservation");
@@ -500,7 +536,8 @@ app.get("/auth/google/callback", async (req, res) => {
       const updateData = {
         updated_at: new Date().toISOString(),
         picture: userInfo.picture,
-        email: userInfo.email
+        email: userInfo.email,
+        last_login: new Date().toISOString()
       };
 
       if (!hasCustomUsername) {
@@ -529,40 +566,65 @@ app.get("/auth/google/callback", async (req, res) => {
     } else {
       console.log("New zkLogin user - creating profile");
 
-      const userSalt = generateRandomness();
-      const suiAddress = jwtToAddress(tokens.id_token, userSalt);
-      console.log("Generated new Sui address:", suiAddress);
-
-      const profileData = {
-        email: userInfo.email,
-        google_id: userInfo.sub,
-        name: userInfo.name,
-        picture: userInfo.picture,
-        user_salt: userSalt,
-        sui_address: suiAddress,
-        auth_method: "zklogin",
-        wallet_name: "zklogin",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      const { data: insertedProfile, error: insertError } = await supabase
+      // Double-check to prevent race conditions
+      const { data: raceCheck } = await supabase
         .from("user_profiles")
-        .insert([profileData])
-        .select()
-        .single();
+        .select("id")
+        .eq("google_id", userInfo.sub)
+        .maybeSingle();
 
-      if (insertError) {
-        console.error("Profile insert error:", insertError);
-        throw new Error("Profile creation failed");
+      if (raceCheck) {
+        console.log("Race condition detected - user was created by another request");
+        profile = raceCheck;
+      } else {
+        const userSalt = generateRandomness();
+        const suiAddress = jwtToAddress(tokens.id_token, userSalt);
+        console.log("Generated new Sui address:", suiAddress);
+
+        const profileData = {
+          email: userInfo.email,
+          google_id: userInfo.sub,
+          name: userInfo.name,
+          picture: userInfo.picture,
+          user_salt: userSalt,
+          sui_address: suiAddress,
+          auth_method: "zklogin",
+          wallet_name: "zklogin",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_login: new Date().toISOString()
+        };
+
+        const { data: insertedProfile, error: insertError } = await supabase
+          .from("user_profiles")
+          .insert([profileData])
+          .select()
+          .single();
+
+        if (insertError) {
+          // Check if it's a unique constraint violation
+          if (insertError.code === '23505') {
+            console.log("Unique constraint violation - fetching existing user");
+            const { data: existing } = await supabase
+              .from("user_profiles")
+              .select("*")
+              .eq("google_id", userInfo.sub)
+              .single();
+            profile = existing;
+          } else {
+            console.error("Profile insert error:", insertError);
+            throw new Error("Profile creation failed");
+          }
+        } else {
+          profile = insertedProfile;
+          isNewUser = true;
+        }
       }
-
-      profile = insertedProfile;
-      isNewUser = true;
     }
 
     const requiresUsername = needsUsernameSetup(profile.name);
 
+    // Store session with expiration
     sessions[state] = {
       id: userInfo.sub,
       email: userInfo.email,
@@ -574,7 +636,9 @@ app.get("/auth/google/callback", async (req, res) => {
       profileId: profile.id,
       sub: userInfo.sub,
       aud: userInfo.aud,
-      needsUsernameSetup: requiresUsername
+      needsUsernameSetup: requiresUsername,
+      timestamp: new Date().toISOString(),
+      expiresAt: Date.now() + (30 * 60 * 1000) // 30 minutes
     };
 
     try {
@@ -614,6 +678,8 @@ app.get("/auth/google/callback", async (req, res) => {
     res.status(500).send(html);
   }
 });
+
+
 
 // Enhanced wallet validation endpoint
 app.post("/validate-wallet", async (req, res) => {
@@ -760,10 +826,10 @@ app.post("/buy-booster", async (req, res) => {
     console.log(`Creating buy booster transaction for: ${walletAddress}`);
 
     const tx = new Transaction();
-    
+
     // Split coin for payment
     const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(price)]);
-    
+
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::buy_booster_pack`,
       typeArguments: [coinType],
