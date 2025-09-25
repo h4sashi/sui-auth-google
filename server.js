@@ -24,9 +24,6 @@ import {
   validatePublicKey
 } from "./walletUtils.js";
 
-import { randomUUID } from 'crypto';
-
-
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -716,7 +713,7 @@ app.post("/create-binder", async (req, res) => {
   }
 
   try {
-    // Validate username/displayName here if needed
+    console.log(`Creating binder transaction for: ${walletAddress}`);
 
     // Construct Move transaction
     const tx = new Transaction();
@@ -731,16 +728,21 @@ app.post("/create-binder", async (req, res) => {
       ],
     });
 
-    // NOTE: You must sign with the user's wallet or a backend keypair with permission
-    // For demo, just return the transaction block (do not sign/execute)
-    // In production, you must handle signing securely
+    // Set gas budget and sender
+    tx.setSender(walletAddress);
+    tx.setGasLimit(10000000); // 0.01 SUI
+
+    // Serialize the transaction properly
+    const serializedTx = tx.serialize();
+    console.log("Transaction serialized successfully, length:", serializedTx.length);
 
     res.json({
       success: true,
       message: "Binder creation transaction prepared.",
-      txBlock: tx.serialize(), // or tx.blockData if using Sui SDK v0.52+
+      txBlock: serializedTx, // This is now a proper base64 string
     });
   } catch (err) {
+    console.error("Create binder error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -755,9 +757,13 @@ app.post("/buy-booster", async (req, res) => {
   }
 
   try {
+    console.log(`Creating buy booster transaction for: ${walletAddress}`);
+
     const tx = new Transaction();
-    // Split coin for payment (assumes tx.gas is user's SUI coin object)
+    
+    // Split coin for payment
     const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(price)]);
+    
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::buy_booster_pack`,
       typeArguments: [coinType],
@@ -771,16 +777,23 @@ app.post("/buy-booster", async (req, res) => {
       ],
     });
 
+    // Set gas budget and sender
+    tx.setSender(walletAddress);
+    tx.setGasLimit(15000000); // 0.015 SUI for more complex transaction
+
+    const serializedTx = tx.serialize();
+    console.log("Buy booster transaction serialized successfully");
+
     res.json({
       success: true,
       message: "Booster pack purchase transaction prepared.",
-      txBlock: tx.serialize(),
+      txBlock: serializedTx,
     });
   } catch (err) {
+    console.error("Buy booster error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
@@ -791,6 +804,8 @@ app.post("/open-booster", async (req, res) => {
   }
 
   try {
+    console.log(`Creating open booster transaction for: ${walletAddress}`);
+
     const tx = new Transaction();
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
@@ -805,12 +820,20 @@ app.post("/open-booster", async (req, res) => {
       ],
     });
 
+    // Set gas budget and sender
+    tx.setSender(walletAddress);
+    tx.setGasLimit(12000000); // 0.012 SUI
+
+    const serializedTx = tx.serialize();
+    console.log("Open booster transaction serialized successfully");
+
     res.json({
       success: true,
       message: "Open booster transaction prepared.",
-      txBlock: tx.serialize(),
+      txBlock: serializedTx,
     });
   } catch (err) {
+    console.error("Open booster error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
