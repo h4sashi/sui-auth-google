@@ -24,6 +24,10 @@ import {
   validatePublicKey
 } from "./walletUtils.js";
 
+import { randomUUID } from 'crypto';
+
+
+
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
