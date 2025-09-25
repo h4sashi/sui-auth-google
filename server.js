@@ -1245,6 +1245,7 @@ app.post("/open-booster", async (req, res) => {
   if (!walletAddress || !binderId || !boosterPackSerial) {
     return res.status(400).json({ success: false, error: "Missing required fields." });
   }
+  
 
   try {
     console.log(`Creating open booster transaction for: ${walletAddress}`);
