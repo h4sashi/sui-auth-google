@@ -9,6 +9,7 @@ import { generateRandomness, jwtToAddress } from "@mysten/sui/zklogin";
 import { isValidSuiAddress } from "@mysten/sui/utils";
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
+import { TransactionBlock } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -770,6 +771,49 @@ app.post("/validate-wallet", async (req, res) => {
   }
 });
 
+// app.post("/create-binder", async (req, res) => {
+//   if (!requireContractIds(res)) return;
+
+//   const { walletAddress, username, displayName } = req.body;
+//   if (!walletAddress || !username || !displayName) {
+//     return res.status(400).json({ success: false, error: "Missing required fields." });
+//   }
+
+//   try {
+//     console.log(`Creating binder transaction for: ${walletAddress}`);
+
+//     // Construct Move transaction
+//     const tx = new Transaction();
+//     tx.moveCall({
+//       target: `${SUI_PACKAGE_ID}::binder_actions::new`,
+//       arguments: [
+//         tx.object(GLOBAL_CONFIG_ID),
+//         tx.object(COSMETICS_REGISTRY_ID),
+//         tx.object(BINDER_REGISTRY_ID),
+//         tx.pure.string(username),
+//         tx.pure.string(displayName),
+//       ],
+//     });
+
+//     // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
+//     tx.setSender(walletAddress);
+//     tx.setGasBudget(10000000); // 0.01 SUI
+
+//     // Serialize the transaction properly
+//     const serializedTx = tx.serialize();
+//     console.log("Transaction serialized successfully, length:", serializedTx.length);
+
+//     res.json({
+//       success: true,
+//       message: "Binder creation transaction prepared.",
+//       txBlock: serializedTx, // This is now a proper base64 string
+//     });
+//   } catch (err) {
+//     console.error("Create binder error:", err);
+//     res.status(500).json({ success: false, error: err.message });
+//   }
+// });
+
 app.post("/create-binder", async (req, res) => {
   if (!requireContractIds(res)) return;
 
@@ -780,6 +824,21 @@ app.post("/create-binder", async (req, res) => {
 
   try {
     console.log(`Creating binder transaction for: ${walletAddress}`);
+
+    // Check if user already has a verified binder
+    const { data: existingProfile } = await supabase
+      .from("user_profiles")
+      .select("active_binder_id, binder_verified")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (existingProfile?.binder_verified && existingProfile?.active_binder_id) {
+      return res.status(400).json({
+        success: false,
+        error: "User already has a verified binder",
+        binderId: existingProfile.active_binder_id
+      });
+    }
 
     // Construct Move transaction
     const tx = new Transaction();
@@ -794,22 +853,340 @@ app.post("/create-binder", async (req, res) => {
       ],
     });
 
-    // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
     tx.setSender(walletAddress);
-    tx.setGasBudget(10000000); // 0.01 SUI
+    tx.setGasBudget(10000000);
 
-    // Serialize the transaction properly
     const serializedTx = tx.serialize();
     console.log("Transaction serialized successfully, length:", serializedTx.length);
+
+    // Create pending binder transaction record
+    const { data: userProfile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (userProfile) {
+      await supabase
+        .from("binder_transactions")
+        .insert({
+          user_profile_id: userProfile.id,
+          wallet_address: walletAddress,
+          display_name: displayName,
+          username: username,
+          transaction_status: 'pending'
+        });
+    }
 
     res.json({
       success: true,
       message: "Binder creation transaction prepared.",
-      txBlock: serializedTx, // This is now a proper base64 string
+      txBlock: serializedTx,
     });
   } catch (err) {
     console.error("Create binder error:", err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/verify-transaction", async (req, res) => {
+  const { transactionHash, walletAddress } = req.body;
+
+  if (!transactionHash || !walletAddress) {
+    return res.status(400).json({
+      success: false,
+      error: "Transaction hash and wallet address are required"
+    });
+  }
+
+  try {
+    console.log(`Verifying transaction: ${transactionHash} for wallet: ${walletAddress}`);
+
+    // Query blockchain for transaction details
+    const txResult = await suiClient.getTransactionBlock({
+      digest: transactionHash,
+      options: {
+        showEvents: true,
+        showEffects: true,
+        showInput: true,
+        showObjectChanges: true,
+      },
+    });
+
+    if (txResult.effects?.status?.status !== 'success') {
+      return res.json({
+        success: false,
+        verified: false,
+        message: "Transaction failed on blockchain"
+      });
+    }
+
+    // Look for binder creation events
+    let binderCreatedEvent = null;
+    let binderId = null;
+
+    if (txResult.events) {
+      binderCreatedEvent = txResult.events.find(event =>
+        event.type.includes('binder_actions::BinderCreated') ||
+        event.type.includes('BinderCreated')
+      );
+
+      if (binderCreatedEvent && binderCreatedEvent.parsedJson) {
+        binderId = binderCreatedEvent.parsedJson.binder_id ||
+          binderCreatedEvent.parsedJson.id ||
+          binderCreatedEvent.parsedJson.object_id;
+      }
+    }
+
+    // If no event found, try to extract from object changes
+    if (!binderId && txResult.objectChanges) {
+      const createdObjects = txResult.objectChanges.filter(change =>
+        change.type === 'created' &&
+        change.objectType &&
+        change.objectType.includes('Binder')
+      );
+
+      if (createdObjects.length > 0) {
+        binderId = createdObjects[0].objectId;
+      }
+    }
+
+    if (!binderId) {
+      return res.json({
+        success: false,
+        verified: false,
+        message: "Could not extract binder ID from transaction"
+      });
+    }
+
+    // Update database with verified transaction
+    const { data: userProfile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (userProfile) {
+      // Update binder transaction record
+      await supabase
+        .from("binder_transactions")
+        .update({
+          transaction_hash: transactionHash,
+          binder_id: binderId,
+          transaction_status: 'confirmed',
+          blockchain_verified: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_profile_id', userProfile.id)
+        .eq('wallet_address', walletAddress)
+        .eq('transaction_status', 'pending');
+
+      console.log(`Binder verified: ${binderId} for user: ${walletAddress}`);
+    }
+
+    res.json({
+      success: true,
+      verified: true,
+      binderId: binderId,
+      transactionHash: transactionHash,
+      message: "Binder creation verified successfully"
+    });
+
+  } catch (err) {
+    console.error("Transaction verification error:", err);
+    res.status(500).json({
+      success: false,
+      verified: false,
+      error: "Verification failed: " + err.message
+    });
+  }
+});
+
+app.get("/user-binder-status/:walletAddress", async (req, res) => {
+  const { walletAddress } = req.params;
+
+  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid wallet address"
+    });
+  }
+
+  try {
+    // Query user profile for binder info
+    const { data: userProfile, error } = await supabase
+      .from("user_profiles")
+      .select(`
+        active_binder_id,
+        binder_verified,
+        binder_created_at,
+        binder_transaction_hash,
+        last_blockchain_sync
+      `)
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // Not found is OK
+      throw error;
+    }
+
+    let hasBinder = false;
+    let binderInfo = null;
+    let needsVerification = false;
+
+    if (userProfile?.binder_verified && userProfile?.active_binder_id) {
+      // User has verified binder
+      hasBinder = true;
+      binderInfo = {
+        binderId: userProfile.active_binder_id,
+        verified: true,
+        createdAt: userProfile.binder_created_at,
+        transactionHash: userProfile.binder_transaction_hash
+      };
+    } else {
+      // Check for pending transactions
+      const { data: pendingTransactions } = await supabase
+        .from("binder_transactions")
+        .select("*")
+        .eq("wallet_address", walletAddress)
+        .in("transaction_status", ["pending", "confirmed"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (pendingTransactions && pendingTransactions.length > 0) {
+        const pending = pendingTransactions[0];
+        needsVerification = pending.transaction_status === 'pending';
+        binderInfo = {
+          binderId: pending.binder_id,
+          verified: pending.blockchain_verified,
+          status: pending.transaction_status,
+          createdAt: pending.created_at,
+          transactionHash: pending.transaction_hash,
+          needsVerification
+        };
+      }
+    }
+
+    // Optional: Query blockchain directly for double-verification
+    let blockchainBinders = [];
+    if (hasBinder && userProfile.active_binder_id) {
+      try {
+        const binderObject = await suiClient.getObject({
+          id: userProfile.active_binder_id,
+          options: { showContent: true, showOwner: true }
+        });
+
+        if (binderObject.data && binderObject.data.owner) {
+          const ownerAddress = typeof binderObject.data.owner === 'object'
+            ? binderObject.data.owner.AddressOwner
+            : binderObject.data.owner;
+
+          if (ownerAddress === walletAddress) {
+            blockchainBinders.push({
+              id: userProfile.active_binder_id,
+              verified: true,
+              onChain: true
+            });
+          }
+        }
+      } catch (blockchainError) {
+        console.log(`Could not verify binder on blockchain: ${blockchainError.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      hasBinder,
+      binderInfo,
+      needsVerification,
+      blockchainBinders,
+      walletAddress
+    });
+
+  } catch (err) {
+    console.error("Binder status check error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to check binder status: " + err.message
+    });
+  }
+});
+
+app.post("/sync-user-binders", async (req, res) => {
+  const { walletAddress } = req.body;
+
+  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid wallet address"
+    });
+  }
+
+  try {
+    console.log(`Syncing binders for wallet: ${walletAddress}`);
+
+    // Query user's objects for binders
+    const ownedObjects = await suiClient.getOwnedObjects({
+      owner: walletAddress,
+      filter: {
+        StructType: `${SUI_PACKAGE_ID}::binder::Binder`
+      },
+      options: {
+        showContent: true,
+        showType: true
+      }
+    });
+
+    const binders = ownedObjects.data.filter(obj => obj.data && obj.data.content);
+
+    if (binders.length === 0) {
+      return res.json({
+        success: true,
+        message: "No binders found on blockchain",
+        binders: []
+      });
+    }
+
+    // Get user profile
+    const { data: userProfile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (userProfile && binders.length > 0) {
+      const primaryBinder = binders[0]; // Use first binder as primary
+
+      // Update user profile with synced binder
+      await supabase
+        .from("user_profiles")
+        .update({
+          active_binder_id: primaryBinder.data.objectId,
+          binder_verified: true,
+          last_blockchain_sync: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", userProfile.id);
+
+      console.log(`Synced binder: ${primaryBinder.data.objectId} for user: ${walletAddress}`);
+    }
+
+    res.json({
+      success: true,
+      message: `Found and synced ${binders.length} binder(s)`,
+      binders: binders.map(b => ({
+        id: b.data.objectId,
+        type: b.data.type,
+        content: b.data.content
+      }))
+    });
+
+  } catch (err) {
+    console.error("Binder sync error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to sync binders: " + err.message
+    });
   }
 });
 
