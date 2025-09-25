@@ -794,9 +794,9 @@ app.post("/create-binder", async (req, res) => {
       ],
     });
 
-    // Set gas budget and sender
+    // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
     tx.setSender(walletAddress);
-    tx.setGasLimit(10000000); // 0.01 SUI
+    tx.setGasBudget(10000000); // 0.01 SUI
 
     // Serialize the transaction properly
     const serializedTx = tx.serialize();
@@ -843,9 +843,9 @@ app.post("/buy-booster", async (req, res) => {
       ],
     });
 
-    // Set gas budget and sender
+    // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
     tx.setSender(walletAddress);
-    tx.setGasLimit(15000000); // 0.015 SUI for more complex transaction
+    tx.setGasBudget(15000000); // 0.015 SUI for more complex transaction
 
     const serializedTx = tx.serialize();
     console.log("Buy booster transaction serialized successfully");
@@ -886,9 +886,9 @@ app.post("/open-booster", async (req, res) => {
       ],
     });
 
-    // Set gas budget and sender
+    // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
     tx.setSender(walletAddress);
-    tx.setGasLimit(12000000); // 0.012 SUI
+    tx.setGasBudget(12000000); // 0.012 SUI
 
     const serializedTx = tx.serialize();
     console.log("Open booster transaction serialized successfully");
