@@ -888,6 +888,7 @@ app.post("/create-binder", async (req, res) => {
   }
 });
 
+
 app.post("/verify-transaction", async (req, res) => {
   const { transactionHash, walletAddress } = req.body;
 
@@ -918,9 +919,9 @@ app.post("/verify-transaction", async (req, res) => {
 
     // Check transaction status - handle both string and object formats
     const txStatus = txResult.effects?.status?.status || txResult.effects?.status;
-    const isSuccess = txStatus === 'success' || txStatus === 'Success' ||
-      (typeof txStatus === 'object' && txStatus.status === 'success');
-
+    const isSuccess = txStatus === 'success' || txStatus === 'Success' || 
+                     (typeof txStatus === 'object' && txStatus.status === 'success');
+    
     console.log("Transaction status object:", JSON.stringify(txResult.effects?.status, null, 2));
     console.log("Is transaction successful:", isSuccess);
 
@@ -939,15 +940,15 @@ app.post("/verify-transaction", async (req, res) => {
     // Method 1: Look for created objects first (most reliable)
     if (txResult.objectChanges) {
       console.log("Checking object changes for binder creation...");
-
+      
       for (const change of txResult.objectChanges) {
         console.log(`Object change type: ${change.type}, objectType: ${change.objectType}`);
-
+        
         if (change.type === 'created' && change.objectType) {
           // Look for binder objects - check various possible type names
-          if (change.objectType.includes('::binder::Binder') ||
-            change.objectType.includes('::Binder') ||
-            change.objectType.includes('binder')) {
+          if (change.objectType.includes('::binder::Binder') || 
+              change.objectType.includes('::Binder') ||
+              change.objectType.includes('binder')) {
             binderId = change.objectId;
             console.log(`Found binder from object changes: ${binderId}`);
             break;
@@ -959,21 +960,21 @@ app.post("/verify-transaction", async (req, res) => {
     // Method 2: Look for events if object changes didn't work
     if (!binderId && txResult.events) {
       console.log("Checking events for binder creation...");
-
+      
       for (const event of txResult.events) {
         console.log(`Event type: ${event.type}`);
-
-        if (event.type.includes('binder') ||
-          event.type.includes('Binder') ||
-          event.type.includes('BinderCreated')) {
-
+        
+        if (event.type.includes('binder') || 
+            event.type.includes('Binder') || 
+            event.type.includes('BinderCreated')) {
+          
           if (event.parsedJson) {
             // Try different possible field names
-            binderId = event.parsedJson.binder_id ||
-              event.parsedJson.id ||
-              event.parsedJson.object_id ||
-              event.parsedJson.binderId;
-
+            binderId = event.parsedJson.binder_id || 
+                      event.parsedJson.id || 
+                      event.parsedJson.object_id ||
+                      event.parsedJson.binderId;
+            
             if (binderId) {
               console.log(`Found binder from events: ${binderId}`);
               break;
@@ -986,7 +987,7 @@ app.post("/verify-transaction", async (req, res) => {
     // Method 3: If still no binder found, look for any created object (fallback)
     if (!binderId && txResult.objectChanges) {
       console.log("Using fallback: looking for any created object...");
-
+      
       const createdObjects = txResult.objectChanges.filter(change => change.type === 'created');
       if (createdObjects.length > 0) {
         // Use the first created object (excluding gas coin)
@@ -1003,7 +1004,7 @@ app.post("/verify-transaction", async (req, res) => {
     if (!binderId) {
       console.log("Could not extract binder ID from transaction");
       console.log("Full transaction result:", JSON.stringify(txResult, null, 2));
-
+      
       return res.json({
         success: false,
         verified: false,
