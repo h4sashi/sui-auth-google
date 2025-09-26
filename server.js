@@ -9,7 +9,6 @@ import { generateRandomness, jwtToAddress } from "@mysten/sui/zklogin";
 import { isValidSuiAddress } from "@mysten/sui/utils";
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
-import { TransactionBlock } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
