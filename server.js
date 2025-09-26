@@ -912,49 +912,108 @@ app.post("/verify-transaction", async (req, res) => {
       },
     });
 
-    if (txResult.effects?.status?.status !== 'success') {
+    console.log("Transaction effects status:", txResult.effects?.status?.status);
+    console.log("Object changes:", txResult.objectChanges?.length || 0);
+    console.log("Events:", txResult.events?.length || 0);
+
+    // Check transaction status - handle both string and object formats
+    const txStatus = txResult.effects?.status?.status || txResult.effects?.status;
+    const isSuccess = txStatus === 'success' || txStatus === 'Success' || 
+                     (typeof txStatus === 'object' && txStatus.status === 'success');
+    
+    console.log("Transaction status object:", JSON.stringify(txResult.effects?.status, null, 2));
+    console.log("Is transaction successful:", isSuccess);
+
+    if (!isSuccess) {
       return res.json({
         success: false,
         verified: false,
-        message: "Transaction failed on blockchain"
+        message: "Transaction failed on blockchain",
+        txStatus: txStatus,
+        fullStatus: txResult.effects?.status
       });
     }
 
-    // Look for binder creation events
-    let binderCreatedEvent = null;
     let binderId = null;
 
-    if (txResult.events) {
-      binderCreatedEvent = txResult.events.find(event =>
-        event.type.includes('binder_actions::BinderCreated') ||
-        event.type.includes('BinderCreated')
-      );
-
-      if (binderCreatedEvent && binderCreatedEvent.parsedJson) {
-        binderId = binderCreatedEvent.parsedJson.binder_id ||
-          binderCreatedEvent.parsedJson.id ||
-          binderCreatedEvent.parsedJson.object_id;
+    // Method 1: Look for created objects first (most reliable)
+    if (txResult.objectChanges) {
+      console.log("Checking object changes for binder creation...");
+      
+      for (const change of txResult.objectChanges) {
+        console.log(`Object change type: ${change.type}, objectType: ${change.objectType}`);
+        
+        if (change.type === 'created' && change.objectType) {
+          // Look for binder objects - check various possible type names
+          if (change.objectType.includes('::binder::Binder') || 
+              change.objectType.includes('::Binder') ||
+              change.objectType.includes('binder')) {
+            binderId = change.objectId;
+            console.log(`Found binder from object changes: ${binderId}`);
+            break;
+          }
+        }
       }
     }
 
-    // If no event found, try to extract from object changes
-    if (!binderId && txResult.objectChanges) {
-      const createdObjects = txResult.objectChanges.filter(change =>
-        change.type === 'created' &&
-        change.objectType &&
-        change.objectType.includes('Binder')
-      );
+    // Method 2: Look for events if object changes didn't work
+    if (!binderId && txResult.events) {
+      console.log("Checking events for binder creation...");
+      
+      for (const event of txResult.events) {
+        console.log(`Event type: ${event.type}`);
+        
+        if (event.type.includes('binder') || 
+            event.type.includes('Binder') || 
+            event.type.includes('BinderCreated')) {
+          
+          if (event.parsedJson) {
+            // Try different possible field names
+            binderId = event.parsedJson.binder_id || 
+                      event.parsedJson.id || 
+                      event.parsedJson.object_id ||
+                      event.parsedJson.binderId;
+            
+            if (binderId) {
+              console.log(`Found binder from events: ${binderId}`);
+              break;
+            }
+          }
+        }
+      }
+    }
 
+    // Method 3: If still no binder found, look for any created object (fallback)
+    if (!binderId && txResult.objectChanges) {
+      console.log("Using fallback: looking for any created object...");
+      
+      const createdObjects = txResult.objectChanges.filter(change => change.type === 'created');
       if (createdObjects.length > 0) {
-        binderId = createdObjects[0].objectId;
+        // Use the first created object (excluding gas coin)
+        for (const obj of createdObjects) {
+          if (!obj.objectType.includes('::coin::Coin')) {
+            binderId = obj.objectId;
+            console.log(`Found created object (fallback): ${binderId}`);
+            break;
+          }
+        }
       }
     }
 
     if (!binderId) {
+      console.log("Could not extract binder ID from transaction");
+      console.log("Full transaction result:", JSON.stringify(txResult, null, 2));
+      
       return res.json({
         success: false,
         verified: false,
-        message: "Could not extract binder ID from transaction"
+        message: "Could not extract binder ID from transaction, but transaction succeeded",
+        txStatus: "success",
+        debugInfo: {
+          objectChanges: txResult.objectChanges?.length || 0,
+          events: txResult.events?.length || 0,
+          transactionHash
+        }
       });
     }
 
@@ -966,19 +1025,40 @@ app.post("/verify-transaction", async (req, res) => {
       .single();
 
     if (userProfile) {
-      // Update binder transaction record
-      await supabase
+      // Update or insert binder transaction record
+      const { data: existingTx } = await supabase
         .from("binder_transactions")
-        .update({
-          transaction_hash: transactionHash,
-          binder_id: binderId,
-          transaction_status: 'confirmed',
-          blockchain_verified: true,
-          updated_at: new Date().toISOString()
-        })
+        .select("id")
         .eq('user_profile_id', userProfile.id)
         .eq('wallet_address', walletAddress)
-        .eq('transaction_status', 'pending');
+        .eq('transaction_status', 'pending')
+        .single();
+
+      if (existingTx) {
+        // Update existing pending transaction
+        await supabase
+          .from("binder_transactions")
+          .update({
+            transaction_hash: transactionHash,
+            binder_id: binderId,
+            transaction_status: 'confirmed',
+            blockchain_verified: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingTx.id);
+      } else {
+        // Create new transaction record
+        await supabase
+          .from("binder_transactions")
+          .insert({
+            user_profile_id: userProfile.id,
+            wallet_address: walletAddress,
+            transaction_hash: transactionHash,
+            binder_id: binderId,
+            transaction_status: 'confirmed',
+            blockchain_verified: true
+          });
+      }
 
       console.log(`Binder verified: ${binderId} for user: ${walletAddress}`);
     }
