@@ -889,9 +889,7 @@ app.post("/create-binder", async (req, res) => {
 });
 
 
-// Replace your existing /verify-transaction endpoint with this fixed version
-
-// Replace your /verify-transaction endpoint in server.js with this simplified version
+// Replace your server /verify-transaction endpoint with this properly typed version
 
 app.post("/verify-transaction", async (req, res) => {
   const { transactionHash, walletAddress } = req.body;
@@ -917,58 +915,91 @@ app.post("/verify-transaction", async (req, res) => {
       },
     });
 
-    console.log("Raw effects:", JSON.stringify(txResult.effects, null, 2));
-    console.log("Object changes:", JSON.stringify(txResult.objectChanges, null, 2));
+    console.log("Raw transaction result:", JSON.stringify(txResult, null, 2));
 
-    // SIMPLIFIED: Determine transaction success
+    // FIXED: Safe status checking with proper type guards
     let isSuccess = false;
+    let statusInfo = 'unknown';
     const effects = txResult.effects;
 
     if (effects) {
-      // Method 1: Check if status exists and is success
-      if (effects.status) {
-        if (typeof effects.status === 'string') {
-          isSuccess = effects.status.toLowerCase() === 'success';
-          console.log(`Status string check: ${effects.status} -> ${isSuccess}`);
-        } else if (typeof effects.status === 'object') {
-          // Handle various object formats
-          if (effects.status.status) {
-            isSuccess = effects.status.status.toLowerCase() === 'success';
-            console.log(`Nested status check: ${effects.status.status} -> ${isSuccess}`);
-          } else if ('Success' in effects.status) {
-            isSuccess = true;
-            console.log(`Success key found -> ${isSuccess}`);
-          } else if (effects.status.Success !== undefined) {
-            isSuccess = true;
-            console.log(`Success property found -> ${isSuccess}`);
+      console.log("Effects found, checking status...");
+      console.log("Effects.status type:", typeof effects.status);
+      console.log("Effects.status value:", effects.status);
+
+      // Method 1: Direct string status
+      if (typeof effects.status === 'string') {
+        isSuccess = effects.status.toLowerCase() === 'success';
+        statusInfo = effects.status;
+        console.log(`Direct string status: ${effects.status} -> ${isSuccess}`);
+      }
+      // Method 2: Object status
+      else if (effects.status && typeof effects.status === 'object') {
+        const statusObj = effects.status;
+
+        // Check for nested status property
+        if ('status' in statusObj && typeof statusObj.status === 'string') {
+          isSuccess = statusObj.status.toLowerCase() === 'success';
+          statusInfo = statusObj.status;
+          console.log(`Nested status: ${statusObj.status} -> ${isSuccess}`);
+        }
+        // Check for Success key
+        else if ('Success' in statusObj) {
+          isSuccess = true;
+          statusInfo = 'Success';
+          console.log(`Success key found -> ${isSuccess}`);
+        }
+        // Check for Failure key
+        else if ('Failure' in statusObj) {
+          isSuccess = false;
+          statusInfo = 'Failure';
+          console.log(`Failure key found -> ${isSuccess}`);
+
+          // Try to extract error message
+          if (statusObj.Failure && typeof statusObj.Failure === 'object' && 'error' in statusObj.Failure) {
+            console.log(`Failure reason: ${statusObj.Failure.error}`);
           }
+        }
+        else {
+          console.log("Unknown status object format:", statusObj);
+          statusInfo = 'unknown_object_format';
         }
       }
 
-      // Method 2: Fallback - if no explicit failure and we have effects, assume success
-      if (!isSuccess && effects && !effects.error && txResult.digest) {
-        console.log("Fallback: Assuming success - no explicit error found");
+      // Method 3: Fallback based on effects existence and no explicit error
+      if (!isSuccess && effects && !('error' in effects) && txResult.digest) {
+        console.log("Fallback: No explicit error found, transaction has digest -> assuming success");
         isSuccess = true;
+        statusInfo = 'success_inferred';
+      }
+
+      // Method 4: Check for effects.error property
+      if ('error' in effects && effects.error) {
+        console.log(`Effects error found: ${effects.error}`);
+        isSuccess = false;
+        statusInfo = 'error_in_effects';
       }
     }
-
-    // Method 3: Ultimate fallback - if transaction exists and has digest, likely succeeded
-    if (!isSuccess && txResult.digest && !effects?.error) {
-      console.log("Ultimate fallback: Transaction exists with digest, no error -> assuming success");
+    // Method 5: No effects but has digest - likely successful
+    else if (txResult.digest) {
+      console.log("No effects but transaction has digest -> likely successful");
       isSuccess = true;
+      statusInfo = 'success_no_effects';
     }
 
-    console.log("Final success determination:", isSuccess);
+    console.log("Final determination:", { isSuccess, statusInfo });
 
     if (!isSuccess) {
       return res.json({
         success: true,
         verified: false,
-        message: "Transaction found but status unclear - may still be processing",
+        message: `Transaction found but appears unsuccessful (${statusInfo})`,
         rawStatus: effects?.status,
         transactionHash: transactionHash,
         debugInfo: {
           hasEffects: !!effects,
+          hasDigest: !!txResult.digest,
+          statusInfo: statusInfo,
           statusType: typeof effects?.status,
           statusValue: effects?.status
         }
@@ -978,25 +1009,31 @@ app.post("/verify-transaction", async (req, res) => {
     // Look for binder ID in created objects
     let binderId = null;
 
-    if (txResult.objectChanges) {
-      console.log("Analyzing object changes for binder ID...");
+    if (txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
+      console.log(`Analyzing ${txResult.objectChanges.length} object changes for binder ID...`);
 
       for (let i = 0; i < txResult.objectChanges.length; i++) {
         const change = txResult.objectChanges[i];
+
+        // Safe property access
+        const changeType = change && typeof change === 'object' ? change.type : null;
+        const objectType = change && typeof change === 'object' ? change.objectType : null;
+        const objectId = change && typeof change === 'object' ? change.objectId : null;
+
         console.log(`Object ${i}:`, {
-          type: change.type,
-          objectType: change.objectType,
-          objectId: change.objectId
+          type: changeType,
+          objectType: objectType,
+          objectId: objectId ? objectId.substring(0, 20) + '...' : null
         });
 
-        if (change.type === 'created' && change.objectType && change.objectId) {
-          const objectTypeStr = change.objectType.toLowerCase();
+        if (changeType === 'created' && objectType && objectId) {
+          const objectTypeStr = String(objectType).toLowerCase();
 
           // Look for binder-related objects
           if (objectTypeStr.includes('binder') ||
             objectTypeStr.includes('::binder::') ||
-            (change.objectType.includes(SUI_PACKAGE_ID) && objectTypeStr.includes('binder'))) {
-            binderId = change.objectId;
+            (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()) && objectTypeStr.includes('binder'))) {
+            binderId = objectId;
             console.log(`Found binder ID: ${binderId}`);
             break;
           }
@@ -1007,11 +1044,15 @@ app.post("/verify-transaction", async (req, res) => {
       if (!binderId) {
         console.log("No explicit binder found, looking for any created object...");
         for (const change of txResult.objectChanges) {
-          if (change.type === 'created' &&
-            change.objectId &&
-            change.objectType &&
-            !change.objectType.toLowerCase().includes('coin')) {
-            binderId = change.objectId;
+          const changeType = change && typeof change === 'object' ? change.type : null;
+          const objectType = change && typeof change === 'object' ? change.objectType : null;
+          const objectId = change && typeof change === 'object' ? change.objectId : null;
+
+          if (changeType === 'created' &&
+            objectId &&
+            objectType &&
+            !String(objectType).toLowerCase().includes('coin')) {
+            binderId = objectId;
             console.log(`Using fallback object as binder: ${binderId}`);
             break;
           }
@@ -1019,63 +1060,66 @@ app.post("/verify-transaction", async (req, res) => {
       }
     }
 
-    // Update database with verified transaction
+    // Update database if we found a binder
     if (binderId) {
-      const { data: userProfile } = await supabase
-        .from("user_profiles")
-        .select("id")
-        .eq("sui_address", walletAddress)
-        .single();
-
-      if (userProfile) {
-        // Check for existing pending transaction
-        const { data: existingTx } = await supabase
-          .from("binder_transactions")
+      try {
+        const { data: userProfile } = await supabase
+          .from("user_profiles")
           .select("id")
-          .eq('user_profile_id', userProfile.id)
-          .eq('wallet_address', walletAddress)
-          .eq('transaction_status', 'pending')
+          .eq("sui_address", walletAddress)
           .single();
 
-        const transactionData = {
-          transaction_hash: transactionHash,
-          binder_id: binderId,
-          transaction_status: 'confirmed',
-          blockchain_verified: true,
-          updated_at: new Date().toISOString()
-        };
-
-        if (existingTx) {
-          // Update existing
-          await supabase
-            .from("binder_transactions")
-            .update(transactionData)
-            .eq('id', existingTx.id);
-        } else {
-          // Create new
-          await supabase
-            .from("binder_transactions")
-            .insert({
-              user_profile_id: userProfile.id,
-              wallet_address: walletAddress,
-              ...transactionData,
-              created_at: new Date().toISOString()
-            });
-        }
-
-        // Update user profile
-        await supabase
-          .from("user_profiles")
-          .update({
-            active_binder_id: binderId,
-            binder_verified: true,
-            binder_transaction_hash: transactionHash,
-            last_blockchain_sync: new Date().toISOString(),
+        if (userProfile) {
+          // Update or create transaction record
+          const transactionData = {
+            transaction_hash: transactionHash,
+            binder_id: binderId,
+            transaction_status: 'confirmed',
+            blockchain_verified: true,
             updated_at: new Date().toISOString()
-          })
-          .eq("id", userProfile.id);
+          };
 
-        console.log(`Binder verified and stored: ${binderId} for user: ${walletAddress}`);
+          const { data: existingTx } = await supabase
+            .from("binder_transactions")
+            .select("id")
+            .eq('user_profile_id', userProfile.id)
+            .eq('wallet_address', walletAddress)
+            .eq('transaction_status', 'pending')
+            .maybeSingle();
+
+          if (existingTx) {
+            await supabase
+              .from("binder_transactions")
+              .update(transactionData)
+              .eq('id', existingTx.id);
+          } else {
+            await supabase
+              .from("binder_transactions")
+              .insert({
+                user_profile_id: userProfile.id,
+                wallet_address: walletAddress,
+                ...transactionData,
+                created_at: new Date().toISOString()
+              });
+          }
+
+          // Update user profile
+          await supabase
+            .from("user_profiles")
+            .update({
+              active_binder_id: binderId,
+              binder_verified: true,
+              binder_transaction_hash: transactionHash,
+              last_blockchain_sync: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", userProfile.id);
+
+          console.log(`Database updated: Binder ${binderId} verified for user ${walletAddress}`);
+        }
+      } catch (dbError) {
+        console.error("Database update error:", dbError);
+        // Don't fail the whole request due to database issues
       }
     }
 
@@ -1084,9 +1128,10 @@ app.post("/verify-transaction", async (req, res) => {
       verified: true,
       binderId: binderId,
       transactionHash: transactionHash,
+      statusInfo: statusInfo,
       message: binderId
         ? "Binder creation verified and stored successfully"
-        : "Transaction verified but binder ID not found"
+        : `Transaction verified (${statusInfo}) but binder ID not found in object changes`
     });
 
   } catch (err) {
@@ -1094,7 +1139,7 @@ app.post("/verify-transaction", async (req, res) => {
     res.status(500).json({
       success: false,
       verified: false,
-      error: "Verification failed: " + err.message
+      error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
     });
   }
 });
