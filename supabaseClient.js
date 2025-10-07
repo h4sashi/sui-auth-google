@@ -1,4 +1,4 @@
-// supabaseClient.js 
+// supabaseClient.js from server(node project)
 //  git add . && git commit -m "Wallet Fix" && git push origin main
 import { createClient } from "@supabase/supabase-js";
 

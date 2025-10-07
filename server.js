@@ -1,4 +1,4 @@
-// server.js - Refactored with external HTML template
+// server.js 
 // git add . && git commit -m "Smart Contract Tester" && git push origin main
 // server.js - Updated with Wallet Standard integration
 import express from "express";
@@ -770,48 +770,6 @@ app.post("/validate-wallet", async (req, res) => {
   }
 });
 
-// app.post("/create-binder", async (req, res) => {
-//   if (!requireContractIds(res)) return;
-
-//   const { walletAddress, username, displayName } = req.body;
-//   if (!walletAddress || !username || !displayName) {
-//     return res.status(400).json({ success: false, error: "Missing required fields." });
-//   }
-
-//   try {
-//     console.log(`Creating binder transaction for: ${walletAddress}`);
-
-//     // Construct Move transaction
-//     const tx = new Transaction();
-//     tx.moveCall({
-//       target: `${SUI_PACKAGE_ID}::binder_actions::new`,
-//       arguments: [
-//         tx.object(GLOBAL_CONFIG_ID),
-//         tx.object(COSMETICS_REGISTRY_ID),
-//         tx.object(BINDER_REGISTRY_ID),
-//         tx.pure.string(username),
-//         tx.pure.string(displayName),
-//       ],
-//     });
-
-//     // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
-//     tx.setSender(walletAddress);
-//     tx.setGasBudget(10000000); // 0.01 SUI
-
-//     // Serialize the transaction properly
-//     const serializedTx = tx.serialize();
-//     console.log("Transaction serialized successfully, length:", serializedTx.length);
-
-//     res.json({
-//       success: true,
-//       message: "Binder creation transaction prepared.",
-//       txBlock: serializedTx, // This is now a proper base64 string
-//     });
-//   } catch (err) {
-//     console.error("Create binder error:", err);
-//     res.status(500).json({ success: false, error: err.message });
-//   }
-// });
 
 app.post("/create-binder", async (req, res) => {
   if (!requireContractIds(res)) return;
@@ -853,7 +811,11 @@ app.post("/create-binder", async (req, res) => {
     });
 
     tx.setSender(walletAddress);
-    tx.setGasBudget(10000000);
+
+    // FIXED: Increased gas budget significantly
+    // Previous: 10000000 (0.01 SUI)
+    // New: 50000000 (0.05 SUI) - much safer for complex transactions
+    tx.setGasBudget(50000000);
 
     const serializedTx = tx.serialize();
     console.log("Transaction serialized successfully, length:", serializedTx.length);
@@ -1412,9 +1374,11 @@ app.post("/buy-booster", async (req, res) => {
       ],
     });
 
-    // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
     tx.setSender(walletAddress);
-    tx.setGasBudget(15000000); // 0.015 SUI for more complex transaction
+
+    // FIXED: Increased from 15000000 to 80000000 (0.08 SUI)
+    // Buy booster needs more gas due to coin splitting
+    tx.setGasBudget(80000000);
 
     const serializedTx = tx.serialize();
     console.log("Buy booster transaction serialized successfully");
@@ -1438,7 +1402,6 @@ app.post("/open-booster", async (req, res) => {
     return res.status(400).json({ success: false, error: "Missing required fields." });
   }
 
-
   try {
     console.log(`Creating open booster transaction for: ${walletAddress}`);
 
@@ -1456,9 +1419,11 @@ app.post("/open-booster", async (req, res) => {
       ],
     });
 
-    // Set gas budget and sender - FIXED: Use setGasBudget instead of setGasLimit
     tx.setSender(walletAddress);
-    tx.setGasBudget(12000000); // 0.012 SUI
+
+    // FIXED: Increased from 12000000 to 60000000 (0.06 SUI)
+    // Open booster uses randomness which needs more gas
+    tx.setGasBudget(60000000);
 
     const serializedTx = tx.serialize();
     console.log("Open booster transaction serialized successfully");
@@ -1474,19 +1439,6 @@ app.post("/open-booster", async (req, res) => {
   }
 });
 
-// Contract IDs endpoint (unchanged, commented out for security) -- Optional
-// app.get("/contract-ids", (req, res) => {
-//   res.json({
-//     SUI_PACKAGE_ID,
-//     GLOBAL_CONFIG_ID,
-//     BINDER_REGISTRY_ID,
-//     COSMETICS_REGISTRY_ID,
-//     CATALOG_REGISTRY_ID,
-//     CARD_REGISTRY_ID,
-//     CLOCK_ID,
-//     RANDOM_ID,
-//   });
-// });
 
 
 
