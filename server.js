@@ -879,148 +879,137 @@ app.post("/verify-transaction", async (req, res) => {
 
     console.log("Raw transaction result:", JSON.stringify(txResult, null, 2));
 
-    // FIXED: Safe status checking with proper type guards
+    // Check transaction status
     let isSuccess = false;
     let statusInfo = 'unknown';
     const effects = txResult.effects;
 
     if (effects) {
-      console.log("Effects found, checking status...");
-      console.log("Effects.status type:", typeof effects.status);
-      console.log("Effects.status value:", effects.status);
-
-      // Method 1: Direct string status
+      // Check status
       if (typeof effects.status === 'string') {
         isSuccess = effects.status.toLowerCase() === 'success';
         statusInfo = effects.status;
-        console.log(`Direct string status: ${effects.status} -> ${isSuccess}`);
-      }
-      // Method 2: Object status
-      else if (effects.status && typeof effects.status === 'object') {
+      } else if (effects.status && typeof effects.status === 'object') {
         const statusObj = effects.status;
-
-        // Check for nested status property
         if ('status' in statusObj && typeof statusObj.status === 'string') {
           isSuccess = statusObj.status.toLowerCase() === 'success';
           statusInfo = statusObj.status;
-          console.log(`Nested status: ${statusObj.status} -> ${isSuccess}`);
-        }
-        // Check for Success key
-        else if ('Success' in statusObj) {
+        } else if ('Success' in statusObj) {
           isSuccess = true;
           statusInfo = 'Success';
-          console.log(`Success key found -> ${isSuccess}`);
-        }
-        // Check for Failure key
-        else if ('Failure' in statusObj) {
+        } else if ('Failure' in statusObj) {
           isSuccess = false;
           statusInfo = 'Failure';
-          console.log(`Failure key found -> ${isSuccess}`);
-
-          // Try to extract error message
-          if (statusObj.Failure && typeof statusObj.Failure === 'object' && 'error' in statusObj.Failure) {
-            console.log(`Failure reason: ${statusObj.Failure.error}`);
-          }
-        }
-        else {
-          console.log("Unknown status object format:", statusObj);
-          statusInfo = 'unknown_object_format';
         }
       }
-
-      // Method 3: Fallback based on effects existence and no explicit error
-      if (!isSuccess && effects && !('error' in effects) && txResult.digest) {
-        console.log("Fallback: No explicit error found, transaction has digest -> assuming success");
-        isSuccess = true;
-        statusInfo = 'success_inferred';
-      }
-
-      // Method 4: Check for effects.error property
-      if ('error' in effects && effects.error) {
-        console.log(`Effects error found: ${effects.error}`);
-        isSuccess = false;
-        statusInfo = 'error_in_effects';
-      }
-    }
-    // Method 5: No effects but has digest - likely successful
-    else if (txResult.digest) {
-      console.log("No effects but transaction has digest -> likely successful");
-      isSuccess = true;
-      statusInfo = 'success_no_effects';
     }
 
-    console.log("Final determination:", { isSuccess, statusInfo });
+    console.log("Transaction status:", { isSuccess, statusInfo });
 
     if (!isSuccess) {
       return res.json({
         success: true,
         verified: false,
         message: `Transaction found but appears unsuccessful (${statusInfo})`,
-        rawStatus: effects?.status,
-        transactionHash: transactionHash,
-        debugInfo: {
-          hasEffects: !!effects,
-          hasDigest: !!txResult.digest,
-          statusInfo: statusInfo,
-          statusType: typeof effects?.status,
-          statusValue: effects?.status
-        }
+        transactionHash: transactionHash
       });
     }
 
-    // Look for binder ID in created objects
+    // FIXED: Look for binder ID in effects.created array (where it actually is)
     let binderId = null;
 
-    if (txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
-      console.log(`Analyzing ${txResult.objectChanges.length} object changes for binder ID...`);
+    // First, check effects.created (this is where your binder actually is)
+    if (effects.created && Array.isArray(effects.created)) {
+      console.log(`Checking ${effects.created.length} created objects in effects...`);
 
-      for (let i = 0; i < txResult.objectChanges.length; i++) {
-        const change = txResult.objectChanges[i];
+      for (let i = 0; i < effects.created.length; i++) {
+        const created = effects.created[i];
+        const objectId = created?.reference?.objectId;
+        const owner = created?.owner;
 
-        // Safe property access
+        if (!objectId) continue;
+
+        console.log(`Created object ${i}:`, {
+          objectId: objectId.substring(0, 20) + '...',
+          owner: owner
+        });
+
+        // Check if this object is owned by the user (not shared, not ObjectOwner of another address)
+        let isUserOwned = false;
+
+        if (owner && typeof owner === 'object') {
+          // Check for AddressOwner
+          if (owner.AddressOwner && owner.AddressOwner === walletAddress) {
+            isUserOwned = true;
+          }
+          // ObjectOwner means it's owned by another object (like a table)
+          // Shared means it's a shared object
+          // We want objects directly owned by the user
+        }
+
+        // If owned by user, this is likely the binder
+        if (isUserOwned) {
+          binderId = objectId;
+          console.log(`Found user-owned object (likely binder): ${binderId}`);
+          break;
+        }
+      }
+
+      // Fallback: If we didn't find a user-owned object, look for Shared objects
+      // (In case your binder is created as a shared object)
+      if (!binderId) {
+        for (const created of effects.created) {
+          const objectId = created?.reference?.objectId;
+          const owner = created?.owner;
+
+          if (objectId && owner && typeof owner === 'object' && 'Shared' in owner) {
+            binderId = objectId;
+            console.log(`Found shared object (possibly binder): ${binderId}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Also check objectChanges as backup (even though it's empty in your case)
+    if (!binderId && txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
+      console.log(`Checking ${txResult.objectChanges.length} object changes as backup...`);
+
+      for (const change of txResult.objectChanges) {
         const changeType = change && typeof change === 'object' ? change.type : null;
         const objectType = change && typeof change === 'object' ? change.objectType : null;
         const objectId = change && typeof change === 'object' ? change.objectId : null;
 
-        console.log(`Object ${i}:`, {
-          type: changeType,
-          objectType: objectType,
-          objectId: objectId ? objectId.substring(0, 20) + '...' : null
-        });
-
         if (changeType === 'created' && objectType && objectId) {
           const objectTypeStr = String(objectType).toLowerCase();
 
-          // Look for binder-related objects
           if (objectTypeStr.includes('binder') ||
-            objectTypeStr.includes('::binder::') ||
-            (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()) && objectTypeStr.includes('binder'))) {
+            (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()))) {
             binderId = objectId;
-            console.log(`Found binder ID: ${binderId}`);
-            break;
-          }
-        }
-      }
-
-      // Fallback: Use first created non-coin object
-      if (!binderId) {
-        console.log("No explicit binder found, looking for any created object...");
-        for (const change of txResult.objectChanges) {
-          const changeType = change && typeof change === 'object' ? change.type : null;
-          const objectType = change && typeof change === 'object' ? change.objectType : null;
-          const objectId = change && typeof change === 'object' ? change.objectId : null;
-
-          if (changeType === 'created' &&
-            objectId &&
-            objectType &&
-            !String(objectType).toLowerCase().includes('coin')) {
-            binderId = objectId;
-            console.log(`Using fallback object as binder: ${binderId}`);
+            console.log(`Found binder in objectChanges: ${binderId}`);
             break;
           }
         }
       }
     }
+
+    // Fallback: Use first created object that's not a coin
+    if (!binderId && effects.created && effects.created.length > 0) {
+      console.log("Using fallback: first non-system created object");
+
+      for (const created of effects.created) {
+        const objectId = created?.reference?.objectId;
+
+        // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
+        if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
+          binderId = objectId;
+          console.log(`Fallback binder ID: ${binderId}`);
+          break;
+        }
+      }
+    }
+
+    console.log(`Final binder ID determination: ${binderId || 'NOT FOUND'}`);
 
     // Update database if we found a binder
     if (binderId) {
@@ -1077,7 +1066,7 @@ app.post("/verify-transaction", async (req, res) => {
             })
             .eq("id", userProfile.id);
 
-          console.log(`Database updated: Binder ${binderId} verified for user ${walletAddress}`);
+          console.log(`✅ Database updated: Binder ${binderId} verified for user ${walletAddress}`);
         }
       } catch (dbError) {
         console.error("Database update error:", dbError);
@@ -1087,13 +1076,18 @@ app.post("/verify-transaction", async (req, res) => {
 
     res.json({
       success: true,
-      verified: true,
+      verified: !!binderId,
       binderId: binderId,
       transactionHash: transactionHash,
       statusInfo: statusInfo,
       message: binderId
         ? "Binder creation verified and stored successfully"
-        : `Transaction verified (${statusInfo}) but binder ID not found in object changes`
+        : "Transaction successful but binder ID could not be determined. Please sync binders manually.",
+      debugInfo: {
+        createdObjectsCount: effects?.created?.length || 0,
+        objectChangesCount: txResult.objectChanges?.length || 0,
+        firstCreatedObject: effects?.created?.[0]?.reference?.objectId
+      }
     });
 
   } catch (err) {
