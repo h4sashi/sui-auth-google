@@ -1338,6 +1338,151 @@ app.post("/sync-user-binders", async (req, res) => {
   }
 });
 
+// Add this to your server.js
+
+// Endpoint to register a new booster pack in the catalog
+app.post("/register-booster-pack", async (req, res) => {
+  if (!requireContractIds(res)) return;
+
+  const {
+    walletAddress,
+    boosterPackSerial,
+    price,
+    coinType,
+    name,
+    description
+  } = req.body;
+
+  if (!walletAddress || !boosterPackSerial || !price) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing required fields: walletAddress, boosterPackSerial, price"
+    });
+  }
+
+  try {
+    console.log(`Registering booster pack: ${boosterPackSerial}`);
+
+    const tx = new Transaction();
+
+    // Call the register_booster_pack function from your catalog module
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::catalog::register_booster_pack`,
+      typeArguments: [coinType || '0x2::sui::SUI'],
+      arguments: [
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(CATALOG_REGISTRY_ID),
+        tx.pure.string(boosterPackSerial),
+        tx.pure.string(name || boosterPackSerial), // Pack name
+        tx.pure.string(description || "Booster Pack"), // Pack description
+        tx.pure.u64(price), // Price in MIST
+      ],
+    });
+
+    tx.setSender(walletAddress);
+    tx.setGasBudget(50000000); // 0.05 SUI
+
+    const serializedTx = tx.serialize();
+    console.log("Booster pack registration transaction prepared");
+
+    res.json({
+      success: true,
+      message: "Booster pack registration transaction prepared",
+      txBlock: serializedTx,
+    });
+  } catch (err) {
+    console.error("Register booster pack error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Endpoint to list all available booster packs
+app.get("/list-booster-packs", async (req, res) => {
+  if (!requireContractIds(res)) return;
+
+  try {
+    console.log("Fetching available booster packs from catalog...");
+
+    // Query the catalog registry object to get all booster packs
+    const catalogObject = await suiClient.getObject({
+      id: CATALOG_REGISTRY_ID,
+      options: {
+        showContent: true,
+        showType: true,
+      }
+    });
+
+    if (!catalogObject.data || !catalogObject.data.content) {
+      return res.json({
+        success: true,
+        boosterPacks: [],
+        message: "No booster packs found in catalog"
+      });
+    }
+
+    // Extract booster pack data from the catalog
+    // This depends on your Move contract structure
+    const content = catalogObject.data.content;
+    console.log("Catalog content:", JSON.stringify(content, null, 2));
+
+    // Return the booster packs
+    res.json({
+      success: true,
+      catalogId: CATALOG_REGISTRY_ID,
+      catalogContent: content,
+      message: "Catalog data retrieved successfully"
+    });
+
+  } catch (err) {
+    console.error("List booster packs error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Quick endpoint to check if a booster pack exists
+app.get("/check-booster-pack/:serial", async (req, res) => {
+  const { serial } = req.params;
+
+  try {
+    console.log(`Checking if booster pack exists: ${serial}`);
+
+    // Query the catalog to see if this serial exists
+    const catalogObject = await suiClient.getObject({
+      id: CATALOG_REGISTRY_ID,
+      options: {
+        showContent: true,
+      }
+    });
+
+    // You'll need to parse the catalog content based on your Move struct
+    // This is a simplified check
+    const exists = catalogObject.data && catalogObject.data.content;
+
+    res.json({
+      success: true,
+      serial: serial,
+      exists: exists,
+      catalogId: CATALOG_REGISTRY_ID,
+      message: exists
+        ? "Booster pack may exist (check catalog content)"
+        : "Catalog not accessible"
+    });
+
+  } catch (err) {
+    console.error("Check booster pack error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 
 app.post("/buy-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
