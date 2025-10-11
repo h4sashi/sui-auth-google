@@ -1100,6 +1100,46 @@ app.post("/verify-transaction", async (req, res) => {
   }
 });
 
+
+app.get("/verify-config", async (req, res) => {
+  try {
+    const configChecks = {
+      packageId: SUI_PACKAGE_ID,
+      globalConfig: GLOBAL_CONFIG_ID,
+      catalogRegistry: CATALOG_REGISTRY_ID,
+      binderRegistry: BINDER_REGISTRY_ID,
+      cardRegistry: CARD_REGISTRY_ID,
+      cosmeticsRegistry: COSMETICS_REGISTRY_ID
+    };
+    
+    // Check if catalog registry exists
+    const catalogExists = await suiClient.getObject({
+      id: CATALOG_REGISTRY_ID,
+      options: { showContent: true }
+    });
+    
+    // Get dynamic fields (booster packs)
+    const dynamicFields = await suiClient.getDynamicFields({
+      parentId: CATALOG_REGISTRY_ID
+    });
+    
+    res.json({
+      success: true,
+      currentConfig: configChecks,
+      correctCatalogRegistry: "0xd2978edd155604448b5d13e0048152939f47f72766149d557101a58c521ed542",
+      isCorrect: CATALOG_REGISTRY_ID === "0xd2978edd155604448b5d13e0048152939f47f72766149d557101a58c521ed542",
+      catalogExists: !!catalogExists.data,
+      boosterPacksCount: dynamicFields.data.length,
+      explorerLink: `https://suiscan.xyz/devnet/object/${CATALOG_REGISTRY_ID}`
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 // Add this debug endpoint to your server.js to see the raw transaction data
 
 app.post("/debug-transaction", async (req, res) => {
