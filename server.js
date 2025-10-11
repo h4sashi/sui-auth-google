@@ -1497,16 +1497,15 @@ app.post("/admin/prepare-register-booster", async (req, res) => {
     tx.setSender(adminWalletAddress);
     tx.setGasBudget(50000000);
 
-    // FIX: Use the correct serialization method
-    const txBytes = await tx.build({ client: suiClient });
-    const serializedTx = Buffer.from(txBytes).toString('base64');
+    // Use the SAME method as create-binder
+    const serializedTx = tx.serialize();
     
-    console.log("Register booster transaction serialized successfully");
+    console.log("Register booster transaction serialized successfully, length:", serializedTx.length);
 
     res.json({
       success: true,
       message: "Register booster transaction prepared",
-      txBlock: serializedTx, // Now it's base64-encoded
+      txBlock: serializedTx,
     });
   } catch (err) {
     console.error("Prepare register booster error:", err);
