@@ -1454,6 +1454,69 @@ app.post("/sync-user-binders", async (req, res) => {
   }
 });
 
+app.post("/admin/prepare-register-booster", async (req, res) => {
+  if (!requireContractIds(res)) return;
+
+  const { 
+    adminWalletAddress,
+    boosterPackSerial, 
+    name, 
+    description, 
+    price, 
+    coinType 
+  } = req.body;
+
+  if (!adminWalletAddress || !boosterPackSerial || !name || !description || !price || !coinType) {
+    return res.status(400).json({ 
+      success: false, 
+      error: "Missing required fields" 
+    });
+  }
+
+  try {
+    console.log(`Preparing register booster transaction for admin: ${adminWalletAddress}`);
+
+    const tx = new Transaction();
+    
+    const ADMIN_CAP_ID = process.env.ADMIN_CAP_ID || '0x778f3f7540e146b093f234aebfb6702bb76aa5192c7e06974f1022ca0b9e9c35';
+    
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::catalog::register_booster_pack`,
+      typeArguments: [coinType],
+      arguments: [
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(CATALOG_REGISTRY_ID),
+        tx.object(ADMIN_CAP_ID),
+        tx.pure.string(boosterPackSerial),
+        tx.pure.string(name),
+        tx.pure.string(description),
+        tx.pure.u64(price),
+      ],
+    });
+
+    tx.setSender(adminWalletAddress);
+    tx.setGasBudget(50000000);
+
+    // FIX: Use the correct serialization method
+    const txBytes = await tx.build({ client: suiClient });
+    const serializedTx = Buffer.from(txBytes).toString('base64');
+    
+    console.log("Register booster transaction serialized successfully");
+
+    res.json({
+      success: true,
+      message: "Register booster transaction prepared",
+      txBlock: serializedTx, // Now it's base64-encoded
+    });
+  } catch (err) {
+    console.error("Prepare register booster error:", err);
+    res.status(500).json({ 
+      success: false, 
+      error: err.message 
+    });
+  }
+});
+
 
 app.post("/buy-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
