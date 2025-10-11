@@ -996,10 +996,10 @@ app.post("/verify-transaction", async (req, res) => {
     // Fallback: Use first created object that's not a coin
     if (!binderId && effects.created && effects.created.length > 0) {
       console.log("Using fallback: first non-system created object");
-      
+
       for (const created of effects.created) {
         const objectId = created?.reference?.objectId;
-        
+
         // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
         if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
           binderId = objectId;
@@ -1100,39 +1100,53 @@ app.post("/verify-transaction", async (req, res) => {
   }
 });
 
+// Add this endpoint to your server.js
+app.post("/admin/register-booster", async (req, res) => {
+  const {
+    boosterPackSerial,
+    name,
+    description,
+    price,
+    coinType
+  } = req.body;
 
-app.get("/verify-config", async (req, res) => {
   try {
-    const configChecks = {
-      packageId: SUI_PACKAGE_ID,
-      globalConfig: GLOBAL_CONFIG_ID,
-      catalogRegistry: CATALOG_REGISTRY_ID,
-      binderRegistry: BINDER_REGISTRY_ID,
-      cardRegistry: CARD_REGISTRY_ID,
-      cosmeticsRegistry: COSMETICS_REGISTRY_ID
-    };
-    
-    // Check if catalog registry exists
-    const catalogExists = await suiClient.getObject({
-      id: CATALOG_REGISTRY_ID,
-      options: { showContent: true }
+    // You'll need an admin keypair with the AdminCap
+    const adminKeypair = Ed25519Keypair.fromSecretKey(
+      Buffer.from(process.env.ADMIN_PRIVATE_KEY, 'base64')
+    );
+
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${SUI_PACKAGE_ID}::catalog::register_booster_pack`,
+      typeArguments: [coinType],
+      arguments: [
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(CATALOG_REGISTRY_ID),
+        tx.object(process.env.ADMIN_CAP_ID), // Your admin cap
+        tx.pure.string(boosterPackSerial),
+        tx.pure.string(name),
+        tx.pure.string(description),
+        tx.pure.u64(price),
+      ],
     });
-    
-    // Get dynamic fields (booster packs)
-    const dynamicFields = await suiClient.getDynamicFields({
-      parentId: CATALOG_REGISTRY_ID
+
+    const result = await suiClient.signAndExecuteTransaction({
+      transaction: tx,
+      signer: adminKeypair,
     });
-    
+
+    console.log(`Booster pack registered: ${result.digest}`);
+
     res.json({
       success: true,
-      currentConfig: configChecks,
-      correctCatalogRegistry: "0xd2978edd155604448b5d13e0048152939f47f72766149d557101a58c521ed542",
-      isCorrect: CATALOG_REGISTRY_ID === "0xd2978edd155604448b5d13e0048152939f47f72766149d557101a58c521ed542",
-      catalogExists: !!catalogExists.data,
-      boosterPacksCount: dynamicFields.data.length,
-      explorerLink: `https://suiscan.xyz/devnet/object/${CATALOG_REGISTRY_ID}`
+      message: "Booster pack registered successfully",
+      transactionHash: result.digest
     });
+
   } catch (err) {
+    console.error("Register booster error:", err);
     res.status(500).json({
       success: false,
       error: err.message
