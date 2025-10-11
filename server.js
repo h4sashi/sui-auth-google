@@ -996,10 +996,10 @@ app.post("/verify-transaction", async (req, res) => {
     // Fallback: Use first created object that's not a coin
     if (!binderId && effects.created && effects.created.length > 0) {
       console.log("Using fallback: first non-system created object");
-
+      
       for (const created of effects.created) {
         const objectId = created?.reference?.objectId;
-
+        
         // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
         if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
           binderId = objectId;
@@ -1096,122 +1096,6 @@ app.post("/verify-transaction", async (req, res) => {
       success: false,
       verified: false,
       error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
-    });
-  }
-});
-
-// Add this endpoint to your server.js
-app.post("/admin/register-booster", async (req, res) => {
-  const {
-    boosterPackSerial,
-    name,
-    description,
-    price,
-    coinType
-  } = req.body;
-
-  try {
-    // You'll need an admin keypair with the AdminCap
-    const adminKeypair = Ed25519Keypair.fromSecretKey(
-      Buffer.from(process.env.ADMIN_PRIVATE_KEY, 'base64')
-    );
-
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${SUI_PACKAGE_ID}::catalog::register_booster_pack`,
-      typeArguments: [coinType],
-      arguments: [
-        tx.object(GLOBAL_CONFIG_ID),
-        tx.object(CATALOG_REGISTRY_ID),
-        tx.object(process.env.ADMIN_CAP_ID), // Your admin cap
-        tx.pure.string(boosterPackSerial),
-        tx.pure.string(name),
-        tx.pure.string(description),
-        tx.pure.u64(price),
-      ],
-    });
-
-    const result = await suiClient.signAndExecuteTransaction({
-      transaction: tx,
-      signer: adminKeypair,
-    });
-
-    console.log(`Booster pack registered: ${result.digest}`);
-
-    res.json({
-      success: true,
-      message: "Booster pack registered successfully",
-      transactionHash: result.digest
-    });
-
-  } catch (err) {
-    console.error("Register booster error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-app.post("/admin/prepare-register-booster", async (req, res) => {
-  if (!requireContractIds(res)) return;
-
-  const {
-    adminWalletAddress,
-    boosterPackSerial,
-    name,
-    description,
-    price,
-    coinType
-  } = req.body;
-
-  if (!adminWalletAddress || !boosterPackSerial || !name || !description || !price || !coinType) {
-    return res.status(400).json({
-      success: false,
-      error: "Missing required fields"
-    });
-  }
-
-  try {
-    console.log(`Preparing register booster transaction for admin: ${adminWalletAddress}`);
-
-    const tx = new Transaction();
-
-    // You'll need to know your AdminCap object ID
-    // This should be in your environment variables
-    const ADMIN_CAP_ID = process.env.ADMIN_CAP_ID || '0x778f3f7540e146b093f234aebfb6702bb76aa5192c7e06974f1022ca0b9e9c35';
-
-    tx.moveCall({
-      target: `${SUI_PACKAGE_ID}::catalog::register_booster_pack`,
-      typeArguments: [coinType],
-      arguments: [
-        tx.object(GLOBAL_CONFIG_ID),
-        tx.object(CATALOG_REGISTRY_ID),
-        tx.object(ADMIN_CAP_ID),
-        tx.pure.string(boosterPackSerial),
-        tx.pure.string(name),
-        tx.pure.string(description),
-        tx.pure.u64(price),
-      ],
-    });
-
-    tx.setSender(adminWalletAddress);
-    tx.setGasBudget(50000000); // 0.05 SUI
-
-    const serializedTx = tx.serialize();
-    console.log("Register booster transaction prepared successfully");
-
-    res.json({
-      success: true,
-      message: "Register booster transaction prepared",
-      txBlock: serializedTx,
-    });
-  } catch (err) {
-    console.error("Prepare register booster error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
     });
   }
 });
@@ -1450,68 +1334,6 @@ app.post("/sync-user-binders", async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Failed to sync binders: " + err.message
-    });
-  }
-});
-
-app.post("/admin/prepare-register-booster", async (req, res) => {
-  if (!requireContractIds(res)) return;
-
-  const { 
-    adminWalletAddress,
-    boosterPackSerial, 
-    name, 
-    description, 
-    price, 
-    coinType 
-  } = req.body;
-
-  if (!adminWalletAddress || !boosterPackSerial || !name || !description || !price || !coinType) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Missing required fields" 
-    });
-  }
-
-  try {
-    console.log(`Preparing register booster transaction for admin: ${adminWalletAddress}`);
-
-    const tx = new Transaction();
-    
-    const ADMIN_CAP_ID = process.env.ADMIN_CAP_ID || '0x778f3f7540e146b093f234aebfb6702bb76aa5192c7e06974f1022ca0b9e9c35';
-    
-    tx.moveCall({
-      target: `${SUI_PACKAGE_ID}::catalog::register_booster_pack`,
-      typeArguments: [coinType],
-      arguments: [
-        tx.object(GLOBAL_CONFIG_ID),
-        tx.object(CATALOG_REGISTRY_ID),
-        tx.object(ADMIN_CAP_ID),
-        tx.pure.string(boosterPackSerial),
-        tx.pure.string(name),
-        tx.pure.string(description),
-        tx.pure.u64(price),
-      ],
-    });
-
-    tx.setSender(adminWalletAddress);
-    tx.setGasBudget(50000000);
-
-    // Use the SAME method as create-binder
-    const serializedTx = tx.serialize();
-    
-    console.log("Register booster transaction serialized successfully, length:", serializedTx.length);
-
-    res.json({
-      success: true,
-      message: "Register booster transaction prepared",
-      txBlock: serializedTx,
-    });
-  } catch (err) {
-    console.error("Prepare register booster error:", err);
-    res.status(500).json({ 
-      success: false, 
-      error: err.message 
     });
   }
 });
