@@ -1392,8 +1392,27 @@ app.post("/buy-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
 
   const { walletAddress, binderId, boosterPackSerial, price, coinType } = req.body;
+  
+  // ADD THIS DEBUG
+  console.log("=== BUY BOOSTER DEBUG ===");
+  console.log("Wallet:", walletAddress);
+  console.log("Binder:", binderId);
+  console.log("Serial:", boosterPackSerial);
+  console.log("Price:", price);
+  console.log("Coin Type:", coinType);
+  
   if (!walletAddress || !binderId || !boosterPackSerial || !price || !coinType) {
-    return res.status(400).json({ success: false, error: "Missing required fields." });
+    const missing = [];
+    if (!walletAddress) missing.push("walletAddress");
+    if (!binderId) missing.push("binderId");
+    if (!boosterPackSerial) missing.push("boosterPackSerial");
+    if (!price) missing.push("price");
+    if (!coinType) missing.push("coinType");
+    
+    return res.status(400).json({ 
+      success: false, 
+      error: `Missing required fields: ${missing.join(", ")}` 
+    });
   }
 
   try {
@@ -1401,67 +1420,56 @@ app.post("/buy-booster", async (req, res) => {
     console.log(`Binder ID: ${binderId}`);
 
     // Verify the binder exists and is owned by the user
-    try {
-      const binderObject = await suiClient.getObject({
-        id: binderId,
-        options: { showOwner: true, showType: true }
-      });
+    const binderObject = await suiClient.getObject({
+      id: binderId,
+      options: { showOwner: true, showType: true }
+    });
 
-      if (!binderObject.data) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Binder not found on blockchain" 
-        });
-      }
-
-      // Verify ownership
-      const owner = binderObject.data.owner;
-      let ownerAddress = null;
-      
-      if (owner && typeof owner === 'object') {
-        if (owner.AddressOwner) {
-          ownerAddress = owner.AddressOwner;
-        }
-      }
-
-      if (ownerAddress !== walletAddress) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Binder is not owned by this wallet address",
-          details: {
-            binderOwner: ownerAddress,
-            requestWallet: walletAddress
-          }
-        });
-      }
-
-      console.log(`✅ Binder verified: owned by ${walletAddress}`);
-
-    } catch (verifyError) {
-      console.error("Binder verification failed:", verifyError);
+    if (!binderObject.data) {
       return res.status(400).json({ 
         success: false, 
-        error: "Could not verify binder ownership: " + verifyError.message 
+        error: "Binder not found on blockchain" 
       });
     }
+
+    // Verify ownership
+    const owner = binderObject.data.owner;
+    let ownerAddress = null;
+    
+    if (owner && typeof owner === 'object') {
+      if (owner.AddressOwner) {
+        ownerAddress = owner.AddressOwner;
+      }
+    }
+
+    if (ownerAddress !== walletAddress) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Binder is not owned by this wallet address",
+        details: {
+          binderOwner: ownerAddress,
+          requestWallet: walletAddress
+        }
+      });
+    }
+
+    console.log(`✅ Binder verified: owned by ${walletAddress}`);
 
     const tx = new Transaction();
 
     // Split coin for payment
     const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(price)]);
 
-    // CRITICAL FIX: The binder is an owned object, not shared
-    // We need to pass it as a regular object that will be borrowed mutably
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::buy_booster_pack`,
       typeArguments: [coinType],
       arguments: [
-        tx.object(GLOBAL_CONFIG_ID),           // Shared object
-        tx.object(CATALOG_REGISTRY_ID),        // Shared object
-        tx.object(binderId),                   // Owned object (will be borrowed &mut)
+        tx.object(GLOBAL_CONFIG_ID),
+        tx.object(CATALOG_REGISTRY_ID),
+        tx.object(binderId),
         tx.pure.string(boosterPackSerial),
         paymentCoin,
-        tx.object(CLOCK_ID),                   // Shared object
+        tx.object(CLOCK_ID),
       ],
     });
 
@@ -1477,11 +1485,12 @@ app.post("/buy-booster", async (req, res) => {
       txBlock: serializedTx,
     });
   } catch (err) {
-    console.error("Buy booster error:", err);
+    console.error("❌ Buy booster error:", err);
+    console.error("Error stack:", err.stack);
     res.status(500).json({ 
       success: false, 
       error: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 });
