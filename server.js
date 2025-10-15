@@ -1486,6 +1486,7 @@ app.post("/buy-booster", async (req, res) => {
   }
 });
 
+
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
 
@@ -1497,14 +1498,50 @@ app.post("/open-booster", async (req, res) => {
   try {
     console.log(`Creating open booster transaction for: ${walletAddress}`);
 
+    // Verify binder ownership
+    try {
+      const binderObject = await suiClient.getObject({
+        id: binderId,
+        options: { showOwner: true }
+      });
+
+      if (!binderObject.data) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Binder not found" 
+        });
+      }
+
+      const owner = binderObject.data.owner;
+      let ownerAddress = null;
+      
+      if (owner && typeof owner === 'object' && owner.AddressOwner) {
+        ownerAddress = owner.AddressOwner;
+      }
+
+      if (ownerAddress !== walletAddress) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Binder is not owned by this wallet" 
+        });
+      }
+
+    } catch (verifyError) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Could not verify binder: " + verifyError.message 
+      });
+    }
+
     const tx = new Transaction();
+    
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
       arguments: [
         tx.object(GLOBAL_CONFIG_ID),
         tx.object(CATALOG_REGISTRY_ID),
         tx.object(CARD_REGISTRY_ID),
-        tx.object(binderId),
+        tx.object(binderId),                   // Owned object
         tx.pure.string(boosterPackSerial),
         tx.object(RANDOM_ID),
         tx.object(CLOCK_ID),
@@ -1512,13 +1549,10 @@ app.post("/open-booster", async (req, res) => {
     });
 
     tx.setSender(walletAddress);
-
-    // FIXED: Increased from 12000000 to 60000000 (0.06 SUI)
-    // Open booster uses randomness which needs more gas
     tx.setGasBudget(60000000);
 
     const serializedTx = tx.serialize();
-    console.log("Open booster transaction serialized successfully");
+    console.log("✅ Open booster transaction serialized successfully");
 
     res.json({
       success: true,
@@ -1530,6 +1564,51 @@ app.post("/open-booster", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// app.post("/open-booster", async (req, res) => {
+//   if (!requireContractIds(res)) return;
+
+//   const { walletAddress, binderId, boosterPackSerial } = req.body;
+//   if (!walletAddress || !binderId || !boosterPackSerial) {
+//     return res.status(400).json({ success: false, error: "Missing required fields." });
+//   }
+
+//   try {
+//     console.log(`Creating open booster transaction for: ${walletAddress}`);
+
+//     const tx = new Transaction();
+//     tx.moveCall({
+//       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
+//       arguments: [
+//         tx.object(GLOBAL_CONFIG_ID),
+//         tx.object(CATALOG_REGISTRY_ID),
+//         tx.object(CARD_REGISTRY_ID),
+//         tx.object(binderId),
+//         tx.pure.string(boosterPackSerial),
+//         tx.object(RANDOM_ID),
+//         tx.object(CLOCK_ID),
+//       ],
+//     });
+
+//     tx.setSender(walletAddress);
+
+//     // FIXED: Increased from 12000000 to 60000000 (0.06 SUI)
+//     // Open booster uses randomness which needs more gas
+//     tx.setGasBudget(60000000);
+
+//     const serializedTx = tx.serialize();
+//     console.log("Open booster transaction serialized successfully");
+
+//     res.json({
+//       success: true,
+//       message: "Open booster transaction prepared.",
+//       txBlock: serializedTx,
+//     });
+//   } catch (err) {
+//     console.error("Open booster error:", err);
+//     res.status(500).json({ success: false, error: err.message });
+//   }
+// });
 
 
 
