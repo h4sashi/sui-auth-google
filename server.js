@@ -1338,6 +1338,104 @@ app.post("/sync-user-binders", async (req, res) => {
   }
 });
 
+// Add these endpoints to your server.js
+
+// Update user profile image
+app.post("/update-profile-image", async (req, res) => {
+  const { walletAddress, profileImageId } = req.body;
+
+  if (!walletAddress || !profileImageId) {
+    return res.status(400).json({
+      success: false,
+      error: "Wallet address and profile image ID are required"
+    });
+  }
+
+  try {
+    // Validate wallet address
+    if (!isValidSuiAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid Sui address format"
+      });
+    }
+
+    // Update profile image in database
+    const { data: updatedProfile, error: updateError } = await supabase
+      .from("user_profiles")
+      .update({
+        profile_image_id: profileImageId,
+        updated_at: new Date().toISOString()
+      })
+      .eq("sui_address", walletAddress)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Profile image update error:", updateError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to update profile image"
+      });
+    }
+
+    console.log(`Profile image updated: ${walletAddress} -> ${profileImageId}`);
+
+    res.json({
+      success: true,
+      message: "Profile image updated successfully",
+      profileImageId: profileImageId
+    });
+
+  } catch (err) {
+    console.error("Profile image update error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Profile image update failed: " + err.message
+    });
+  }
+});
+
+// Get user profile image
+app.get("/get-profile-image/:walletAddress", async (req, res) => {
+  const { walletAddress } = req.params;
+
+  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid wallet address"
+    });
+  }
+
+  try {
+    const { data: profile, error } = await supabase
+      .from("user_profiles")
+      .select("profile_image_id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (error) {
+      console.error("Profile image fetch error:", error);
+      return res.status(404).json({
+        success: false,
+        error: "Profile not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      profileImageId: profile.profile_image_id || "profile_1" // Default
+    });
+
+  } catch (err) {
+    console.error("Profile image fetch error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch profile image: " + err.message
+    });
+  }
+});
+
 
 app.post("/buy-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
