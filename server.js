@@ -1393,7 +1393,6 @@ app.post("/buy-booster", async (req, res) => {
 
   const { walletAddress, binderId, boosterPackSerial, price, coinType } = req.body;
   
-  // ADD THIS DEBUG
   console.log("=== BUY BOOSTER DEBUG ===");
   console.log("Wallet:", walletAddress);
   console.log("Binder:", binderId);
@@ -1419,10 +1418,10 @@ app.post("/buy-booster", async (req, res) => {
     console.log(`Creating buy booster transaction for: ${walletAddress}`);
     console.log(`Binder ID: ${binderId}`);
 
-    // Verify the binder exists and is owned by the user
+    // Verify the binder exists on blockchain
     const binderObject = await suiClient.getObject({
       id: binderId,
-      options: { showOwner: true, showType: true }
+      options: { showOwner: true, showType: true, showContent: true }
     });
 
     if (!binderObject.data) {
@@ -1432,28 +1431,71 @@ app.post("/buy-booster", async (req, res) => {
       });
     }
 
-    // Verify ownership
+    console.log("Binder object:", JSON.stringify(binderObject.data, null, 2));
+
+    // Check ownership type
     const owner = binderObject.data.owner;
     let ownerAddress = null;
+    let isShared = false;
     
     if (owner && typeof owner === 'object') {
       if (owner.AddressOwner) {
         ownerAddress = owner.AddressOwner;
+        console.log(`Binder is AddressOwner: ${ownerAddress}`);
+      } else if ('Shared' in owner) {
+        isShared = true;
+        console.log(`Binder is Shared object`);
+      } else if (owner.ObjectOwner) {
+        console.log(`Binder is ObjectOwner (owned by another object)`);
       }
     }
 
-    if (ownerAddress !== walletAddress) {
+    // CRITICAL FIX: Allow shared objects (binders are shared in your contract)
+    if (!isShared && ownerAddress !== walletAddress) {
       return res.status(400).json({ 
         success: false, 
-        error: "Binder is not owned by this wallet address",
+        error: "Binder is not accessible by this wallet address",
         details: {
           binderOwner: ownerAddress,
+          isShared: isShared,
           requestWallet: walletAddress
         }
       });
     }
 
-    console.log(`✅ Binder verified: owned by ${walletAddress}`);
+    // Verify binder type matches your contract
+    const binderType = binderObject.data.type;
+    if (!binderType || !binderType.includes('binder::Binder')) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Object is not a valid Binder type",
+        details: {
+          foundType: binderType
+        }
+      });
+    }
+
+    console.log(`✅ Binder verified: ${isShared ? 'Shared object' : `owned by ${ownerAddress}`}`);
+
+    // Additional check: Verify the binder belongs to this user in the database
+    const { data: userProfile } = await supabase
+      .from("user_profiles")
+      .select("active_binder_id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (!userProfile || userProfile.active_binder_id !== binderId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "This binder is not registered to your account",
+        details: {
+          requestedBinder: binderId,
+          registeredBinder: userProfile?.active_binder_id || 'none'
+        }
+      });
+    }
+
+    console.log(`✅ Binder verified in database`);
 
     const tx = new Transaction();
 
@@ -1466,7 +1508,7 @@ app.post("/buy-booster", async (req, res) => {
       arguments: [
         tx.object(GLOBAL_CONFIG_ID),
         tx.object(CATALOG_REGISTRY_ID),
-        tx.object(binderId),
+        tx.object(binderId),  // This works for both shared and owned objects
         tx.pure.string(boosterPackSerial),
         paymentCoin,
         tx.object(CLOCK_ID),
