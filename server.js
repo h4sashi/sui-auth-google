@@ -1339,163 +1339,16 @@ app.post("/sync-user-binders", async (req, res) => {
 });
 
 
-// app.post("/buy-booster", async (req, res) => {
-//   if (!requireContractIds(res)) return;
-
-//   const { walletAddress, binderId, boosterPackSerial, price, coinType } = req.body;
-//   if (!walletAddress || !binderId || !boosterPackSerial || !price || !coinType) {
-//     return res.status(400).json({ success: false, error: "Missing required fields." });
-//   }
-
-//   try {
-//     console.log(`Creating buy booster transaction for: ${walletAddress}`);
-
-//     const tx = new Transaction();
-
-//     // Split coin for payment
-//     const [paymentCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(price)]);
-
-//     tx.moveCall({
-//       target: `${SUI_PACKAGE_ID}::booster::buy_booster_pack`,
-//       typeArguments: [coinType],
-//       arguments: [
-//         tx.object(GLOBAL_CONFIG_ID),
-//         tx.object(CATALOG_REGISTRY_ID),
-//         tx.object(binderId),
-//         tx.pure.string(boosterPackSerial),
-//         paymentCoin,
-//         tx.object(CLOCK_ID),
-//       ],
-//     });
-
-//     tx.setSender(walletAddress);
-
-//     // FIXED: Increased from 15000000 to 80000000 (0.08 SUI)
-//     // Buy booster needs more gas due to coin splitting
-//     tx.setGasBudget(80000000);
-
-//     const serializedTx = tx.serialize();
-//     console.log("Buy booster transaction serialized successfully");
-
-//     res.json({
-//       success: true,
-//       message: "Booster pack purchase transaction prepared.",
-//       txBlock: serializedTx,
-//     });
-//   } catch (err) {
-//     console.error("Buy booster error:", err);
-//     res.status(500).json({ success: false, error: err.message });
-//   }
-// });
-
 app.post("/buy-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
 
   const { walletAddress, binderId, boosterPackSerial, price, coinType } = req.body;
-  
-  console.log("=== BUY BOOSTER DEBUG ===");
-  console.log("Wallet:", walletAddress);
-  console.log("Binder:", binderId);
-  console.log("Serial:", boosterPackSerial);
-  console.log("Price:", price);
-  console.log("Coin Type:", coinType);
-  
   if (!walletAddress || !binderId || !boosterPackSerial || !price || !coinType) {
-    const missing = [];
-    if (!walletAddress) missing.push("walletAddress");
-    if (!binderId) missing.push("binderId");
-    if (!boosterPackSerial) missing.push("boosterPackSerial");
-    if (!price) missing.push("price");
-    if (!coinType) missing.push("coinType");
-    
-    return res.status(400).json({ 
-      success: false, 
-      error: `Missing required fields: ${missing.join(", ")}` 
-    });
+    return res.status(400).json({ success: false, error: "Missing required fields." });
   }
 
   try {
     console.log(`Creating buy booster transaction for: ${walletAddress}`);
-    console.log(`Binder ID: ${binderId}`);
-
-    // Verify the binder exists on blockchain
-    const binderObject = await suiClient.getObject({
-      id: binderId,
-      options: { showOwner: true, showType: true, showContent: true }
-    });
-
-    if (!binderObject.data) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Binder not found on blockchain" 
-      });
-    }
-
-    console.log("Binder object:", JSON.stringify(binderObject.data, null, 2));
-
-    // Check ownership type
-    const owner = binderObject.data.owner;
-    let ownerAddress = null;
-    let isShared = false;
-    
-    if (owner && typeof owner === 'object') {
-      if (owner.AddressOwner) {
-        ownerAddress = owner.AddressOwner;
-        console.log(`Binder is AddressOwner: ${ownerAddress}`);
-      } else if ('Shared' in owner) {
-        isShared = true;
-        console.log(`Binder is Shared object`);
-      } else if (owner.ObjectOwner) {
-        console.log(`Binder is ObjectOwner (owned by another object)`);
-      }
-    }
-
-    // CRITICAL FIX: Allow shared objects (binders are shared in your contract)
-    if (!isShared && ownerAddress !== walletAddress) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Binder is not accessible by this wallet address",
-        details: {
-          binderOwner: ownerAddress,
-          isShared: isShared,
-          requestWallet: walletAddress
-        }
-      });
-    }
-
-    // Verify binder type matches your contract
-    const binderType = binderObject.data.type;
-    if (!binderType || !binderType.includes('binder::Binder')) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Object is not a valid Binder type",
-        details: {
-          foundType: binderType
-        }
-      });
-    }
-
-    console.log(`✅ Binder verified: ${isShared ? 'Shared object' : `owned by ${ownerAddress}`}`);
-
-    // Additional check: Verify the binder belongs to this user in the database
-    const { data: userProfile } = await supabase
-      .from("user_profiles")
-      .select("active_binder_id")
-      .eq("sui_address", walletAddress)
-      .single();
-
-    if (!userProfile || userProfile.active_binder_id !== binderId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "This binder is not registered to your account",
-        details: {
-          requestedBinder: binderId,
-          registeredBinder: userProfile?.active_binder_id || 'none'
-        }
-      });
-    }
-
-    console.log(`✅ Binder verified in database`);
 
     const tx = new Transaction();
 
@@ -1508,7 +1361,7 @@ app.post("/buy-booster", async (req, res) => {
       arguments: [
         tx.object(GLOBAL_CONFIG_ID),
         tx.object(CATALOG_REGISTRY_ID),
-        tx.object(binderId),  // This works for both shared and owned objects
+        tx.object(binderId),
         tx.pure.string(boosterPackSerial),
         paymentCoin,
         tx.object(CLOCK_ID),
@@ -1516,10 +1369,13 @@ app.post("/buy-booster", async (req, res) => {
     });
 
     tx.setSender(walletAddress);
+
+    // FIXED: Increased from 15000000 to 80000000 (0.08 SUI)
+    // Buy booster needs more gas due to coin splitting
     tx.setGasBudget(80000000);
 
     const serializedTx = tx.serialize();
-    console.log("✅ Buy booster transaction serialized successfully");
+    console.log("Buy booster transaction serialized successfully");
 
     res.json({
       success: true,
@@ -1527,16 +1383,10 @@ app.post("/buy-booster", async (req, res) => {
       txBlock: serializedTx,
     });
   } catch (err) {
-    console.error("❌ Buy booster error:", err);
-    console.error("Error stack:", err.stack);
-    res.status(500).json({ 
-      success: false, 
-      error: err.message,
-      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
-    });
+    console.error("Buy booster error:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
-
 
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
@@ -1549,50 +1399,14 @@ app.post("/open-booster", async (req, res) => {
   try {
     console.log(`Creating open booster transaction for: ${walletAddress}`);
 
-    // Verify binder ownership
-    try {
-      const binderObject = await suiClient.getObject({
-        id: binderId,
-        options: { showOwner: true }
-      });
-
-      if (!binderObject.data) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Binder not found" 
-        });
-      }
-
-      const owner = binderObject.data.owner;
-      let ownerAddress = null;
-      
-      if (owner && typeof owner === 'object' && owner.AddressOwner) {
-        ownerAddress = owner.AddressOwner;
-      }
-
-      if (ownerAddress !== walletAddress) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Binder is not owned by this wallet" 
-        });
-      }
-
-    } catch (verifyError) {
-      return res.status(400).json({ 
-        success: false, 
-        error: "Could not verify binder: " + verifyError.message 
-      });
-    }
-
     const tx = new Transaction();
-    
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
       arguments: [
         tx.object(GLOBAL_CONFIG_ID),
         tx.object(CATALOG_REGISTRY_ID),
         tx.object(CARD_REGISTRY_ID),
-        tx.object(binderId),                   // Owned object
+        tx.object(binderId),
         tx.pure.string(boosterPackSerial),
         tx.object(RANDOM_ID),
         tx.object(CLOCK_ID),
@@ -1600,10 +1414,13 @@ app.post("/open-booster", async (req, res) => {
     });
 
     tx.setSender(walletAddress);
+
+    // FIXED: Increased from 12000000 to 60000000 (0.06 SUI)
+    // Open booster uses randomness which needs more gas
     tx.setGasBudget(60000000);
 
     const serializedTx = tx.serialize();
-    console.log("✅ Open booster transaction serialized successfully");
+    console.log("Open booster transaction serialized successfully");
 
     res.json({
       success: true,
@@ -1615,51 +1432,6 @@ app.post("/open-booster", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-// app.post("/open-booster", async (req, res) => {
-//   if (!requireContractIds(res)) return;
-
-//   const { walletAddress, binderId, boosterPackSerial } = req.body;
-//   if (!walletAddress || !binderId || !boosterPackSerial) {
-//     return res.status(400).json({ success: false, error: "Missing required fields." });
-//   }
-
-//   try {
-//     console.log(`Creating open booster transaction for: ${walletAddress}`);
-
-//     const tx = new Transaction();
-//     tx.moveCall({
-//       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
-//       arguments: [
-//         tx.object(GLOBAL_CONFIG_ID),
-//         tx.object(CATALOG_REGISTRY_ID),
-//         tx.object(CARD_REGISTRY_ID),
-//         tx.object(binderId),
-//         tx.pure.string(boosterPackSerial),
-//         tx.object(RANDOM_ID),
-//         tx.object(CLOCK_ID),
-//       ],
-//     });
-
-//     tx.setSender(walletAddress);
-
-//     // FIXED: Increased from 12000000 to 60000000 (0.06 SUI)
-//     // Open booster uses randomness which needs more gas
-//     tx.setGasBudget(60000000);
-
-//     const serializedTx = tx.serialize();
-//     console.log("Open booster transaction serialized successfully");
-
-//     res.json({
-//       success: true,
-//       message: "Open booster transaction prepared.",
-//       txBlock: serializedTx,
-//     });
-//   } catch (err) {
-//     console.error("Open booster error:", err);
-//     res.status(500).json({ success: false, error: err.message });
-//   }
-// });
 
 
 
