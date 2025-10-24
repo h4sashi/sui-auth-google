@@ -771,89 +771,6 @@ app.post("/validate-wallet", async (req, res) => {
 });
 
 
-// app.post("/create-binder", async (req, res) => {
-//   if (!requireContractIds(res)) return;
-
-//   const { walletAddress, username, displayName } = req.body;
-//   if (!walletAddress || !username || !displayName) {
-//     return res.status(400).json({ success: false, error: "Missing required fields." });
-//   }
-
-//   try {
-//     console.log(`Creating binder transaction for: ${walletAddress}`);
-
-//     // Check if user already has a verified binder
-//     const { data: existingProfile } = await supabase
-//       .from("user_profiles")
-//       .select("active_binder_id, binder_verified")
-//       .eq("sui_address", walletAddress)
-//       .single();
-
-//     if (existingProfile?.binder_verified && existingProfile?.active_binder_id) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "User already has a verified binder",
-//         binderId: existingProfile.active_binder_id
-//       });
-//     }
-
-//     // Construct Move transaction
-//     const tx = new Transaction();
-//     tx.moveCall({
-//       target: `${SUI_PACKAGE_ID}::binder_actions::new`,
-//       arguments: [
-//         tx.object(GLOBAL_CONFIG_ID),
-//         tx.object(COSMETICS_REGISTRY_ID),
-//         tx.object(BINDER_REGISTRY_ID),
-//         tx.pure.string(username),
-//         tx.pure.string(displayName),
-//       ],
-//     });
-
-//     tx.setSender(walletAddress);
-
-//     // FIXED: Increased gas budget significantly
-//     // Previous: 10000000 (0.01 SUI)
-//     // New: 50000000 (0.05 SUI) - much safer for complex transactions
-//     tx.setGasBudget(50000000);
-
-//     const serializedTx = tx.serialize();
-//     console.log("Transaction serialized successfully, length:", serializedTx.length);
-
-//     // Create pending binder transaction record
-//     const { data: userProfile } = await supabase
-//       .from("user_profiles")
-//       .select("id")
-//       .eq("sui_address", walletAddress)
-//       .single();
-
-//     if (userProfile) {
-//       await supabase
-//         .from("binder_transactions")
-//         .insert({
-//           user_profile_id: userProfile.id,
-//           wallet_address: walletAddress,
-//           display_name: displayName,
-//           username: username,
-//           transaction_status: 'pending'
-//         });
-//     }
-
-//     res.json({
-//       success: true,
-//       message: "Binder creation transaction prepared.",
-//       txBlock: serializedTx,
-//     });
-//   } catch (err) {
-//     console.error("Create binder error:", err);
-//     res.status(500).json({ success: false, error: err.message });
-//   }
-// });
-
-
-// Replace your server /verify-transaction endpoint with this properly typed version
-
-
 app.post("/create-binder", async (req, res) => {
   if (!requireContractIds(res)) return;
 
@@ -864,18 +781,20 @@ app.post("/create-binder", async (req, res) => {
 
   try {
     console.log(`Creating binder transaction for: ${walletAddress}`);
-    console.log(`Display Name: ${displayName}`);
 
-    // ✅ REMOVED: Block for existing binder - now allows multiple
+    // Check if user already has a verified binder
     const { data: existingProfile } = await supabase
       .from("user_profiles")
       .select("active_binder_id, binder_verified")
       .eq("sui_address", walletAddress)
-      .maybeSingle();
+      .single();
 
     if (existingProfile?.binder_verified && existingProfile?.active_binder_id) {
-      console.log(`User already has binder: ${existingProfile.active_binder_id}`);
-      console.log(`Creating ADDITIONAL binder with display name: ${displayName}`);
+      return res.status(400).json({
+        success: false,
+        error: "User already has a verified binder",
+        binderId: existingProfile.active_binder_id
+      });
     }
 
     // Construct Move transaction
@@ -892,17 +811,21 @@ app.post("/create-binder", async (req, res) => {
     });
 
     tx.setSender(walletAddress);
+
+    // FIXED: Increased gas budget significantly
+    // Previous: 10000000 (0.01 SUI)
+    // New: 50000000 (0.05 SUI) - much safer for complex transactions
     tx.setGasBudget(50000000);
 
     const serializedTx = tx.serialize();
-    console.log("Transaction serialized successfully");
+    console.log("Transaction serialized successfully, length:", serializedTx.length);
 
-    // Create pending binder transaction
+    // Create pending binder transaction record
     const { data: userProfile } = await supabase
       .from("user_profiles")
       .select("id")
       .eq("sui_address", walletAddress)
-      .maybeSingle();
+      .single();
 
     if (userProfile) {
       await supabase
@@ -927,254 +850,8 @@ app.post("/create-binder", async (req, res) => {
   }
 });
 
-// app.post("/verify-transaction", async (req, res) => {
-//   const { transactionHash, walletAddress } = req.body;
 
-//   if (!transactionHash || !walletAddress) {
-//     return res.status(400).json({
-//       success: false,
-//       error: "Transaction hash and wallet address are required"
-//     });
-//   }
-
-//   try {
-//     console.log(`Verifying transaction: ${transactionHash} for wallet: ${walletAddress}`);
-
-//     // Query blockchain for transaction details
-//     const txResult = await suiClient.getTransactionBlock({
-//       digest: transactionHash,
-//       options: {
-//         showEvents: true,
-//         showEffects: true,
-//         showInput: true,
-//         showObjectChanges: true,
-//       },
-//     });
-
-//     console.log("Raw transaction result:", JSON.stringify(txResult, null, 2));
-
-//     // Check transaction status
-//     let isSuccess = false;
-//     let statusInfo = 'unknown';
-//     const effects = txResult.effects;
-
-//     if (effects) {
-//       // Check status
-//       if (typeof effects.status === 'string') {
-//         isSuccess = effects.status.toLowerCase() === 'success';
-//         statusInfo = effects.status;
-//       } else if (effects.status && typeof effects.status === 'object') {
-//         const statusObj = effects.status;
-//         if ('status' in statusObj && typeof statusObj.status === 'string') {
-//           isSuccess = statusObj.status.toLowerCase() === 'success';
-//           statusInfo = statusObj.status;
-//         } else if ('Success' in statusObj) {
-//           isSuccess = true;
-//           statusInfo = 'Success';
-//         } else if ('Failure' in statusObj) {
-//           isSuccess = false;
-//           statusInfo = 'Failure';
-//         }
-//       }
-//     }
-
-//     console.log("Transaction status:", { isSuccess, statusInfo });
-
-//     if (!isSuccess) {
-//       return res.json({
-//         success: true,
-//         verified: false,
-//         message: `Transaction found but appears unsuccessful (${statusInfo})`,
-//         transactionHash: transactionHash
-//       });
-//     }
-
-//     // FIXED: Look for binder ID in effects.created array (where it actually is)
-//     let binderId = null;
-
-//     // First, check effects.created (this is where your binder actually is)
-//     if (effects.created && Array.isArray(effects.created)) {
-//       console.log(`Checking ${effects.created.length} created objects in effects...`);
-
-//       for (let i = 0; i < effects.created.length; i++) {
-//         const created = effects.created[i];
-//         const objectId = created?.reference?.objectId;
-//         const owner = created?.owner;
-
-//         if (!objectId) continue;
-
-//         console.log(`Created object ${i}:`, {
-//           objectId: objectId.substring(0, 20) + '...',
-//           owner: owner
-//         });
-
-//         // Check if this object is owned by the user (not shared, not ObjectOwner of another address)
-//         let isUserOwned = false;
-
-//         if (owner && typeof owner === 'object') {
-//           // Check for AddressOwner
-//           if (owner.AddressOwner && owner.AddressOwner === walletAddress) {
-//             isUserOwned = true;
-//           }
-//           // ObjectOwner means it's owned by another object (like a table)
-//           // Shared means it's a shared object
-//           // We want objects directly owned by the user
-//         }
-
-//         // If owned by user, this is likely the binder
-//         if (isUserOwned) {
-//           binderId = objectId;
-//           console.log(`Found user-owned object (likely binder): ${binderId}`);
-//           break;
-//         }
-//       }
-
-//       // Fallback: If we didn't find a user-owned object, look for Shared objects
-//       // (In case your binder is created as a shared object)
-//       if (!binderId) {
-//         for (const created of effects.created) {
-//           const objectId = created?.reference?.objectId;
-//           const owner = created?.owner;
-
-//           if (objectId && owner && typeof owner === 'object' && 'Shared' in owner) {
-//             binderId = objectId;
-//             console.log(`Found shared object (possibly binder): ${binderId}`);
-//             break;
-//           }
-//         }
-//       }
-//     }
-
-//     // Also check objectChanges as backup (even though it's empty in your case)
-//     if (!binderId && txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
-//       console.log(`Checking ${txResult.objectChanges.length} object changes as backup...`);
-
-//       for (const change of txResult.objectChanges) {
-//         const changeType = change && typeof change === 'object' ? change.type : null;
-//         const objectType = change && typeof change === 'object' ? change.objectType : null;
-//         const objectId = change && typeof change === 'object' ? change.objectId : null;
-
-//         if (changeType === 'created' && objectType && objectId) {
-//           const objectTypeStr = String(objectType).toLowerCase();
-
-//           if (objectTypeStr.includes('binder') ||
-//             (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()))) {
-//             binderId = objectId;
-//             console.log(`Found binder in objectChanges: ${binderId}`);
-//             break;
-//           }
-//         }
-//       }
-//     }
-
-//     // Fallback: Use first created object that's not a coin
-//     if (!binderId && effects.created && effects.created.length > 0) {
-//       console.log("Using fallback: first non-system created object");
-      
-//       for (const created of effects.created) {
-//         const objectId = created?.reference?.objectId;
-        
-//         // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
-//         if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
-//           binderId = objectId;
-//           console.log(`Fallback binder ID: ${binderId}`);
-//           break;
-//         }
-//       }
-//     }
-
-//     console.log(`Final binder ID determination: ${binderId || 'NOT FOUND'}`);
-
-//     // Update database if we found a binder
-//     if (binderId) {
-//       try {
-//         const { data: userProfile } = await supabase
-//           .from("user_profiles")
-//           .select("id")
-//           .eq("sui_address", walletAddress)
-//           .single();
-
-//         if (userProfile) {
-//           // Update or create transaction record
-//           const transactionData = {
-//             transaction_hash: transactionHash,
-//             binder_id: binderId,
-//             transaction_status: 'confirmed',
-//             blockchain_verified: true,
-//             updated_at: new Date().toISOString()
-//           };
-
-//           const { data: existingTx } = await supabase
-//             .from("binder_transactions")
-//             .select("id")
-//             .eq('user_profile_id', userProfile.id)
-//             .eq('wallet_address', walletAddress)
-//             .eq('transaction_status', 'pending')
-//             .maybeSingle();
-
-//           if (existingTx) {
-//             await supabase
-//               .from("binder_transactions")
-//               .update(transactionData)
-//               .eq('id', existingTx.id);
-//           } else {
-//             await supabase
-//               .from("binder_transactions")
-//               .insert({
-//                 user_profile_id: userProfile.id,
-//                 wallet_address: walletAddress,
-//                 ...transactionData,
-//                 created_at: new Date().toISOString()
-//               });
-//           }
-
-//           // Update user profile
-//           await supabase
-//             .from("user_profiles")
-//             .update({
-//               active_binder_id: binderId,
-//               binder_verified: true,
-//               binder_transaction_hash: transactionHash,
-//               last_blockchain_sync: new Date().toISOString(),
-//               updated_at: new Date().toISOString()
-//             })
-//             .eq("id", userProfile.id);
-
-//           console.log(`✅ Database updated: Binder ${binderId} verified for user ${walletAddress}`);
-//         }
-//       } catch (dbError) {
-//         console.error("Database update error:", dbError);
-//         // Don't fail the whole request due to database issues
-//       }
-//     }
-
-//     res.json({
-//       success: true,
-//       verified: !!binderId,
-//       binderId: binderId,
-//       transactionHash: transactionHash,
-//       statusInfo: statusInfo,
-//       message: binderId
-//         ? "Binder creation verified and stored successfully"
-//         : "Transaction successful but binder ID could not be determined. Please sync binders manually.",
-//       debugInfo: {
-//         createdObjectsCount: effects?.created?.length || 0,
-//         objectChangesCount: txResult.objectChanges?.length || 0,
-//         firstCreatedObject: effects?.created?.[0]?.reference?.objectId
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error("Transaction verification error:", err);
-//     res.status(500).json({
-//       success: false,
-//       verified: false,
-//       error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
-//     });
-//   }
-// });
-
-// Add this debug endpoint to your server.js to see the raw transaction data
+// Replace your server /verify-transaction endpoint with this properly typed version
 
 app.post("/verify-transaction", async (req, res) => {
   const { transactionHash, walletAddress } = req.body;
@@ -1187,8 +864,9 @@ app.post("/verify-transaction", async (req, res) => {
   }
 
   try {
-    console.log(`Verifying transaction: ${transactionHash}`);
+    console.log(`Verifying transaction: ${transactionHash} for wallet: ${walletAddress}`);
 
+    // Query blockchain for transaction details
     const txResult = await suiClient.getTransactionBlock({
       digest: transactionHash,
       options: {
@@ -1199,92 +877,200 @@ app.post("/verify-transaction", async (req, res) => {
       },
     });
 
+    console.log("Raw transaction result:", JSON.stringify(txResult, null, 2));
+
     // Check transaction status
     let isSuccess = false;
+    let statusInfo = 'unknown';
     const effects = txResult.effects;
 
     if (effects) {
+      // Check status
       if (typeof effects.status === 'string') {
         isSuccess = effects.status.toLowerCase() === 'success';
+        statusInfo = effects.status;
       } else if (effects.status && typeof effects.status === 'object') {
-        if ('status' in effects.status) {
-          isSuccess = effects.status.status.toLowerCase() === 'success';
-        } else if ('Success' in effects.status) {
+        const statusObj = effects.status;
+        if ('status' in statusObj && typeof statusObj.status === 'string') {
+          isSuccess = statusObj.status.toLowerCase() === 'success';
+          statusInfo = statusObj.status;
+        } else if ('Success' in statusObj) {
           isSuccess = true;
+          statusInfo = 'Success';
+        } else if ('Failure' in statusObj) {
+          isSuccess = false;
+          statusInfo = 'Failure';
         }
       }
     }
+
+    console.log("Transaction status:", { isSuccess, statusInfo });
 
     if (!isSuccess) {
       return res.json({
         success: true,
         verified: false,
-        message: "Transaction unsuccessful",
+        message: `Transaction found but appears unsuccessful (${statusInfo})`,
         transactionHash: transactionHash
       });
     }
 
-    // Find binder ID
+    // FIXED: Look for binder ID in effects.created array (where it actually is)
     let binderId = null;
 
+    // First, check effects.created (this is where your binder actually is)
     if (effects.created && Array.isArray(effects.created)) {
-      for (const created of effects.created) {
+      console.log(`Checking ${effects.created.length} created objects in effects...`);
+
+      for (let i = 0; i < effects.created.length; i++) {
+        const created = effects.created[i];
         const objectId = created?.reference?.objectId;
         const owner = created?.owner;
 
         if (!objectId) continue;
 
-        if (owner && typeof owner === 'object' && owner.AddressOwner === walletAddress) {
+        console.log(`Created object ${i}:`, {
+          objectId: objectId.substring(0, 20) + '...',
+          owner: owner
+        });
+
+        // Check if this object is owned by the user (not shared, not ObjectOwner of another address)
+        let isUserOwned = false;
+
+        if (owner && typeof owner === 'object') {
+          // Check for AddressOwner
+          if (owner.AddressOwner && owner.AddressOwner === walletAddress) {
+            isUserOwned = true;
+          }
+          // ObjectOwner means it's owned by another object (like a table)
+          // Shared means it's a shared object
+          // We want objects directly owned by the user
+        }
+
+        // If owned by user, this is likely the binder
+        if (isUserOwned) {
           binderId = objectId;
+          console.log(`Found user-owned object (likely binder): ${binderId}`);
+          break;
+        }
+      }
+
+      // Fallback: If we didn't find a user-owned object, look for Shared objects
+      // (In case your binder is created as a shared object)
+      if (!binderId) {
+        for (const created of effects.created) {
+          const objectId = created?.reference?.objectId;
+          const owner = created?.owner;
+
+          if (objectId && owner && typeof owner === 'object' && 'Shared' in owner) {
+            binderId = objectId;
+            console.log(`Found shared object (possibly binder): ${binderId}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Also check objectChanges as backup (even though it's empty in your case)
+    if (!binderId && txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
+      console.log(`Checking ${txResult.objectChanges.length} object changes as backup...`);
+
+      for (const change of txResult.objectChanges) {
+        const changeType = change && typeof change === 'object' ? change.type : null;
+        const objectType = change && typeof change === 'object' ? change.objectType : null;
+        const objectId = change && typeof change === 'object' ? change.objectId : null;
+
+        if (changeType === 'created' && objectType && objectId) {
+          const objectTypeStr = String(objectType).toLowerCase();
+
+          if (objectTypeStr.includes('binder') ||
+            (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()))) {
+            binderId = objectId;
+            console.log(`Found binder in objectChanges: ${binderId}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback: Use first created object that's not a coin
+    if (!binderId && effects.created && effects.created.length > 0) {
+      console.log("Using fallback: first non-system created object");
+      
+      for (const created of effects.created) {
+        const objectId = created?.reference?.objectId;
+        
+        // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
+        if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
+          binderId = objectId;
+          console.log(`Fallback binder ID: ${binderId}`);
           break;
         }
       }
     }
 
+    console.log(`Final binder ID determination: ${binderId || 'NOT FOUND'}`);
+
+    // Update database if we found a binder
     if (binderId) {
-      const { data: userProfile } = await supabase
-        .from("user_profiles")
-        .select("id")
-        .eq("sui_address", walletAddress)
-        .maybeSingle();
-
-      if (userProfile) {
-        // Update transaction record
-        const { data: pendingTx } = await supabase
-          .from("binder_transactions")
+      try {
+        const { data: userProfile } = await supabase
+          .from("user_profiles")
           .select("id")
-          .eq('user_profile_id', userProfile.id)
-          .eq('transaction_status', 'pending')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .eq("sui_address", walletAddress)
+          .single();
 
-        if (pendingTx) {
-          await supabase
+        if (userProfile) {
+          // Update or create transaction record
+          const transactionData = {
+            transaction_hash: transactionHash,
+            binder_id: binderId,
+            transaction_status: 'confirmed',
+            blockchain_verified: true,
+            updated_at: new Date().toISOString()
+          };
+
+          const { data: existingTx } = await supabase
             .from("binder_transactions")
+            .select("id")
+            .eq('user_profile_id', userProfile.id)
+            .eq('wallet_address', walletAddress)
+            .eq('transaction_status', 'pending')
+            .maybeSingle();
+
+          if (existingTx) {
+            await supabase
+              .from("binder_transactions")
+              .update(transactionData)
+              .eq('id', existingTx.id);
+          } else {
+            await supabase
+              .from("binder_transactions")
+              .insert({
+                user_profile_id: userProfile.id,
+                wallet_address: walletAddress,
+                ...transactionData,
+                created_at: new Date().toISOString()
+              });
+          }
+
+          // Update user profile
+          await supabase
+            .from("user_profiles")
             .update({
-              transaction_hash: transactionHash,
-              binder_id: binderId,
-              transaction_status: 'confirmed',
-              blockchain_verified: true,
+              active_binder_id: binderId,
+              binder_verified: true,
+              binder_transaction_hash: transactionHash,
+              last_blockchain_sync: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })
-            .eq('id', pendingTx.id);
+            .eq("id", userProfile.id);
+
+          console.log(`✅ Database updated: Binder ${binderId} verified for user ${walletAddress}`);
         }
-
-        // Set as active binder
-        await supabase
-          .from("user_profiles")
-          .update({
-            active_binder_id: binderId,
-            binder_verified: true,
-            binder_transaction_hash: transactionHash,
-            last_blockchain_sync: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", userProfile.id);
-
-        console.log(`✅ Binder verified and set as active: ${binderId}`);
+      } catch (dbError) {
+        console.error("Database update error:", dbError);
+        // Don't fail the whole request due to database issues
       }
     }
 
@@ -1293,162 +1079,28 @@ app.post("/verify-transaction", async (req, res) => {
       verified: !!binderId,
       binderId: binderId,
       transactionHash: transactionHash,
-      message: binderId ? "Binder verified successfully" : "Transaction successful but binder not found"
-    });
-
-  } catch (err) {
-    console.error("Verification error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-
-app.get("/user-binder-status/:walletAddress", async (req, res) => {
-  const { walletAddress } = req.params;
-
-  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
-    return res.status(400).json({
-      success: false,
-      error: "Invalid wallet address"
-    });
-  }
-
-  try {
-    console.log(`Checking binder status for: ${walletAddress}`);
-
-    const { data: userProfile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("active_binder_id, binder_verified, binder_created_at, binder_transaction_hash")
-      .eq("sui_address", walletAddress)
-      .maybeSingle();
-
-    if (profileError && profileError.code !== 'PGRST116') {
-      throw profileError;
-    }
-
-    let hasBinder = false;
-    let binderInfo = null;
-    let needsVerification = false;
-
-    if (userProfile?.binder_verified && userProfile?.active_binder_id) {
-      hasBinder = true;
-      binderInfo = {
-        binderId: userProfile.active_binder_id,
-        verified: true,
-        createdAt: userProfile.binder_created_at,
-        transactionHash: userProfile.binder_transaction_hash,
-        status: 'verified',
-        needsVerification: false
-      };
-    } else {
-      // Check for pending transactions
-      const { data: userProf } = await supabase
-        .from("user_profiles")
-        .select("id")
-        .eq("sui_address", walletAddress)
-        .maybeSingle();
-
-      if (userProf) {
-        const { data: pendingTx } = await supabase
-          .from("binder_transactions")
-          .select("*")
-          .eq("user_profile_id", userProf.id)
-          .eq("transaction_status", "pending")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (pendingTx) {
-          needsVerification = true;
-          binderInfo = {
-            binderId: pendingTx.binder_id,
-            verified: false,
-            status: 'pending',
-            createdAt: pendingTx.created_at,
-            needsVerification: true
-          };
-        }
+      statusInfo: statusInfo,
+      message: binderId
+        ? "Binder creation verified and stored successfully"
+        : "Transaction successful but binder ID could not be determined. Please sync binders manually.",
+      debugInfo: {
+        createdObjectsCount: effects?.created?.length || 0,
+        objectChangesCount: txResult.objectChanges?.length || 0,
+        firstCreatedObject: effects?.created?.[0]?.reference?.objectId
       }
-    }
-
-    res.json({
-      success: true,
-      hasBinder,
-      binderInfo,
-      needsVerification,
-      blockchainBinders: [],
-      walletAddress
     });
 
   } catch (err) {
-    console.error("Binder status error:", err);
+    console.error("Transaction verification error:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      verified: false,
+      error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
     });
   }
 });
 
-app.get("/user-all-binders/:walletAddress", async (req, res) => {
-  const { walletAddress } = req.params;
-
-  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
-    return res.status(400).json({
-      success: false,
-      error: "Invalid wallet address"
-    });
-  }
-
-  try {
-    const { data: userProfile } = await supabase
-      .from("user_profiles")
-      .select("id, active_binder_id")
-      .eq("sui_address", walletAddress)
-      .maybeSingle();
-
-    if (!userProfile) {
-      return res.json({
-        success: true,
-        binders: [],
-        activeBinder: null
-      });
-    }
-
-    const { data: binderTxs } = await supabase
-      .from("binder_transactions")
-      .select("*")
-      .eq("user_profile_id", userProfile.id)
-      .eq("blockchain_verified", true)
-      .order("created_at", { ascending: false });
-
-    const binders = binderTxs?.map(tx => ({
-      binderId: tx.binder_id,
-      displayName: tx.display_name,
-      createdAt: tx.created_at,
-      transactionHash: tx.transaction_hash,
-      isActive: tx.binder_id === userProfile.active_binder_id
-    })) || [];
-
-    res.json({
-      success: true,
-      binders,
-      activeBinder: userProfile.active_binder_id,
-      totalBinders: binders.length
-    });
-
-  } catch (err) {
-    console.error("Get all binders error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-
+// Add this debug endpoint to your server.js to see the raw transaction data
 
 app.post("/debug-transaction", async (req, res) => {
   const { transactionHash } = req.body;
@@ -1608,88 +1260,6 @@ app.get("/user-binder-status/:walletAddress", async (req, res) => {
   }
 });
 
-// app.post("/sync-user-binders", async (req, res) => {
-//   const { walletAddress } = req.body;
-
-//   if (!walletAddress || !isValidSuiAddress(walletAddress)) {
-//     return res.status(400).json({
-//       success: false,
-//       error: "Invalid wallet address"
-//     });
-//   }
-
-//   try {
-//     console.log(`Syncing binders for wallet: ${walletAddress}`);
-
-//     // Query user's objects for binders
-//     const ownedObjects = await suiClient.getOwnedObjects({
-//       owner: walletAddress,
-//       filter: {
-//         StructType: `${SUI_PACKAGE_ID}::binder::Binder`
-//       },
-//       options: {
-//         showContent: true,
-//         showType: true
-//       }
-//     });
-
-//     const binders = ownedObjects.data.filter(obj => obj.data && obj.data.content);
-
-//     if (binders.length === 0) {
-//       return res.json({
-//         success: true,
-//         message: "No binders found on blockchain",
-//         binders: []
-//       });
-//     }
-
-//     // Get user profile
-//     const { data: userProfile } = await supabase
-//       .from("user_profiles")
-//       .select("id")
-//       .eq("sui_address", walletAddress)
-//       .single();
-
-//     if (userProfile && binders.length > 0) {
-//       const primaryBinder = binders[0]; // Use first binder as primary
-
-//       // Update user profile with synced binder
-//       await supabase
-//         .from("user_profiles")
-//         .update({
-//           active_binder_id: primaryBinder.data.objectId,
-//           binder_verified: true,
-//           last_blockchain_sync: new Date().toISOString(),
-//           updated_at: new Date().toISOString()
-//         })
-//         .eq("id", userProfile.id);
-
-//       console.log(`Synced binder: ${primaryBinder.data.objectId} for user: ${walletAddress}`);
-//     }
-
-//     res.json({
-//       success: true,
-//       message: `Found and synced ${binders.length} binder(s)`,
-//       binders: binders.map(b => ({
-//         id: b.data.objectId,
-//         type: b.data.type,
-//         content: b.data.content
-//       }))
-//     });
-
-//   } catch (err) {
-//     console.error("Binder sync error:", err);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to sync binders: " + err.message
-//     });
-//   }
-// });
-
-// Add these endpoints to your server.js
-
-// Update user profile image
-
 app.post("/sync-user-binders", async (req, res) => {
   const { walletAddress } = req.body;
 
@@ -1701,8 +1271,9 @@ app.post("/sync-user-binders", async (req, res) => {
   }
 
   try {
-    console.log(`Syncing binders for: ${walletAddress}`);
+    console.log(`Syncing binders for wallet: ${walletAddress}`);
 
+    // Query user's objects for binders
     const ownedObjects = await suiClient.getOwnedObjects({
       owner: walletAddress,
       filter: {
@@ -1724,15 +1295,17 @@ app.post("/sync-user-binders", async (req, res) => {
       });
     }
 
+    // Get user profile
     const { data: userProfile } = await supabase
       .from("user_profiles")
       .select("id")
       .eq("sui_address", walletAddress)
-      .maybeSingle();
+      .single();
 
     if (userProfile && binders.length > 0) {
-      const primaryBinder = binders[0];
+      const primaryBinder = binders[0]; // Use first binder as primary
 
+      // Update user profile with synced binder
       await supabase
         .from("user_profiles")
         .update({
@@ -1743,12 +1316,12 @@ app.post("/sync-user-binders", async (req, res) => {
         })
         .eq("id", userProfile.id);
 
-      console.log(`✅ Synced binder: ${primaryBinder.data.objectId}`);
+      console.log(`Synced binder: ${primaryBinder.data.objectId} for user: ${walletAddress}`);
     }
 
     res.json({
       success: true,
-      message: `Found ${binders.length} binder(s)`,
+      message: `Found and synced ${binders.length} binder(s)`,
       binders: binders.map(b => ({
         id: b.data.objectId,
         type: b.data.type,
@@ -1757,202 +1330,38 @@ app.post("/sync-user-binders", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Sync error:", err);
+    console.error("Binder sync error:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: "Failed to sync binders: " + err.message
     });
   }
 });
 
+// Add these endpoints to your server.js
 
-app.post("/switch-active-binder", async (req, res) => {
-  const { walletAddress, binderId } = req.body;
-
-  if (!walletAddress || !binderId) {
-    return res.status(400).json({
-      success: false,
-      error: "Wallet address and binder ID required"
-    });
-  }
-
-  try {
-    const { data: userProfile } = await supabase
-      .from("user_profiles")
-      .select("id")
-      .eq("sui_address", walletAddress)
-      .maybeSingle();
-
-    if (!userProfile) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found"
-      });
-    }
-
-    // Verify binder exists
-    const { data: binderTx } = await supabase
-      .from("binder_transactions")
-      .select("*")
-      .eq("user_profile_id", userProfile.id)
-      .eq("binder_id", binderId)
-      .eq("blockchain_verified", true)
-      .maybeSingle();
-
-    if (!binderTx) {
-      return res.status(404).json({
-        success: false,
-        error: "Binder not found"
-      });
-    }
-
-    // Update active binder
-    await supabase
-      .from("user_profiles")
-      .update({
-        active_binder_id: binderId,
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", userProfile.id);
-
-    console.log(`✅ Switched active binder to: ${binderId}`);
-
-    res.json({
-      success: true,
-      message: "Active binder switched",
-      binderId,
-      displayName: binderTx.display_name
-    });
-
-  } catch (err) {
-    console.error("Switch binder error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-
-
-
-// app.post("/update-profile-image", async (req, res) => {
-//   const { walletAddress, profileImageId } = req.body;
-
-//   if (!walletAddress || !profileImageId) {
-//     return res.status(400).json({
-//       success: false,
-//       error: "Wallet address and profile image ID are required"
-//     });
-//   }
-
-//   try {
-//     // Validate wallet address
-//     if (!isValidSuiAddress(walletAddress)) {
-//       return res.status(400).json({
-//         success: false,
-//         error: "Invalid Sui address format"
-//       });
-//     }
-
-//     // Update profile image in database
-//     const { data: updatedProfile, error: updateError } = await supabase
-//       .from("user_profiles")
-//       .update({
-//         profile_image_id: profileImageId,
-//         updated_at: new Date().toISOString()
-//       })
-//       .eq("sui_address", walletAddress)
-//       .select()
-//       .single();
-
-//     if (updateError) {
-//       console.error("Profile image update error:", updateError);
-//       return res.status(500).json({
-//         success: false,
-//         error: "Failed to update profile image"
-//       });
-//     }
-
-//     console.log(`Profile image updated: ${walletAddress} -> ${profileImageId}`);
-
-//     res.json({
-//       success: true,
-//       message: "Profile image updated successfully",
-//       profileImageId: profileImageId
-//     });
-
-//   } catch (err) {
-//     console.error("Profile image update error:", err);
-//     res.status(500).json({
-//       success: false,
-//       error: "Profile image update failed: " + err.message
-//     });
-//   }
-// });
-
-// // Get user profile image
-// app.get("/get-profile-image/:walletAddress", async (req, res) => {
-//   const { walletAddress } = req.params;
-
-//   if (!walletAddress || !isValidSuiAddress(walletAddress)) {
-//     return res.status(400).json({
-//       success: false,
-//       error: "Invalid wallet address"
-//     });
-//   }
-
-//   try {
-//     const { data: profile, error } = await supabase
-//       .from("user_profiles")
-//       .select("profile_image_id")
-//       .eq("sui_address", walletAddress)
-//       .single();
-
-//     if (error) {
-//       console.error("Profile image fetch error:", error);
-//       return res.status(404).json({
-//         success: false,
-//         error: "Profile not found"
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       profileImageId: profile.profile_image_id || "profile_1" // Default
-//     });
-
-//   } catch (err) {
-//     console.error("Profile image fetch error:", err);
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to fetch profile image: " + err.message
-//     });
-//   }
-// });
-
-
-
-// 7. PROFILE IMAGE ENDPOINTS (already in your server)
+// Update user profile image
 app.post("/update-profile-image", async (req, res) => {
   const { walletAddress, profileImageId } = req.body;
 
   if (!walletAddress || !profileImageId) {
     return res.status(400).json({
       success: false,
-      error: "Wallet address and profile image ID required"
+      error: "Wallet address and profile image ID are required"
     });
   }
 
   try {
+    // Validate wallet address
     if (!isValidSuiAddress(walletAddress)) {
       return res.status(400).json({
         success: false,
-        error: "Invalid Sui address"
+        error: "Invalid Sui address format"
       });
     }
 
-    const { data: updated, error } = await supabase
+    // Update profile image in database
+    const { data: updatedProfile, error: updateError } = await supabase
       .from("user_profiles")
       .update({
         profile_image_id: profileImageId,
@@ -1960,29 +1369,34 @@ app.post("/update-profile-image", async (req, res) => {
       })
       .eq("sui_address", walletAddress)
       .select()
-      .maybeSingle();
+      .single();
 
-    if (error) {
-      throw error;
+    if (updateError) {
+      console.error("Profile image update error:", updateError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to update profile image"
+      });
     }
 
-    console.log(`Profile image updated: ${profileImageId}`);
+    console.log(`Profile image updated: ${walletAddress} -> ${profileImageId}`);
 
     res.json({
       success: true,
-      message: "Profile image updated",
-      profileImageId
+      message: "Profile image updated successfully",
+      profileImageId: profileImageId
     });
 
   } catch (err) {
-    console.error("Update profile image error:", err);
+    console.error("Profile image update error:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: "Profile image update failed: " + err.message
     });
   }
 });
 
+// Get user profile image
 app.get("/get-profile-image/:walletAddress", async (req, res) => {
   const { walletAddress } = req.params;
 
@@ -1998,28 +1412,29 @@ app.get("/get-profile-image/:walletAddress", async (req, res) => {
       .from("user_profiles")
       .select("profile_image_id")
       .eq("sui_address", walletAddress)
-      .maybeSingle();
+      .single();
 
     if (error) {
-      throw error;
+      console.error("Profile image fetch error:", error);
+      return res.status(404).json({
+        success: false,
+        error: "Profile not found"
+      });
     }
 
     res.json({
       success: true,
-      profileImageId: profile?.profile_image_id || "profile_1"
+      profileImageId: profile.profile_image_id || "profile_1" // Default
     });
 
   } catch (err) {
-    console.error("Get profile image error:", err);
+    console.error("Profile image fetch error:", err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: "Failed to fetch profile image: " + err.message
     });
   }
 });
-
-
-
 
 
 app.post("/buy-booster", async (req, res) => {
