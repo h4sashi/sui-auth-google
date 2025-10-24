@@ -790,12 +790,18 @@ app.post("/create-binder", async (req, res) => {
       .single();
 
     if (existingProfile?.binder_verified && existingProfile?.active_binder_id) {
-      return res.status(400).json({
-        success: false,
-        error: "User already has a verified binder",
-        binderId: existingProfile.active_binder_id
+      // ✅ IMPROVED: Return helpful response instead of error
+      console.log(`User already has binder: ${existingProfile.active_binder_id}`);
+      
+      return res.json({
+        success: true,
+        alreadyExists: true,
+        message: "User already has a verified binder",
+        binderId: existingProfile.active_binder_id,
+        // Don't include txBlock - no transaction needed
       });
     }
+
 
     // Construct Move transaction
     const tx = new Transaction();
