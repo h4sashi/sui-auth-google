@@ -790,18 +790,12 @@ app.post("/create-binder", async (req, res) => {
       .single();
 
     if (existingProfile?.binder_verified && existingProfile?.active_binder_id) {
-      // ✅ IMPROVED: Return helpful response instead of error
-      console.log(`User already has binder: ${existingProfile.active_binder_id}`);
-      
-      return res.json({
-        success: true,
-        alreadyExists: true,
-        message: "User already has a verified binder",
-        binderId: existingProfile.active_binder_id,
-        // Don't include txBlock - no transaction needed
+      return res.status(400).json({
+        success: false,
+        error: "User already has a verified binder",
+        binderId: existingProfile.active_binder_id
       });
     }
-
 
     // Construct Move transaction
     const tx = new Transaction();
@@ -1108,7 +1102,414 @@ app.post("/verify-transaction", async (req, res) => {
 
 
 
+app.post("/record-booster-purchase", async (req, res) => {
+  const { 
+    walletAddress, 
+    binderId, 
+    boosterPackSerial, 
+    price, 
+    coinType,
+    transactionHash 
+  } = req.body;
 
+  if (!walletAddress || !binderId || !boosterPackSerial) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing required fields"
+    });
+  }
+
+  try {
+    console.log(`📦 Recording booster purchase for: ${walletAddress}`);
+
+    // Get user profile
+    const { data: userProfile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (profileError || !userProfile) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+
+    // Extract booster pack name from serial
+    const boosterPackName = boosterPackSerial
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+
+    // Insert purchase record
+    const purchaseData = {
+      user_profile_id: userProfile.id,
+      wallet_address: walletAddress,
+      binder_id: binderId,
+      booster_pack_serial: boosterPackSerial,
+      booster_pack_name: boosterPackName,
+      transaction_hash: transactionHash || null,
+      purchase_status: transactionHash ? 'pending' : 'pending',
+      price_paid: price || '0',
+      coin_type: coinType || '0x2::sui::SUI',
+      is_opened: false,
+      blockchain_verified: false,
+      purchased_at: new Date().toISOString()
+    };
+
+    const { data: purchase, error: insertError } = await supabase
+      .from("booster_purchases")
+      .insert([purchaseData])
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("Purchase record insert error:", insertError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to record purchase"
+      });
+    }
+
+    console.log(`✅ Booster purchase recorded: ${purchase.id}`);
+
+    res.json({
+      success: true,
+      message: "Booster purchase recorded",
+      purchaseId: purchase.id,
+      purchase: purchase
+    });
+
+  } catch (err) {
+    console.error("Record purchase error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to record purchase: " + err.message
+    });
+  }
+});
+
+// Verify booster purchase transaction
+app.post("/verify-booster-purchase", async (req, res) => {
+  const { transactionHash, walletAddress } = req.body;
+
+  if (!transactionHash || !walletAddress) {
+    return res.status(400).json({
+      success: false,
+      error: "Transaction hash and wallet address required"
+    });
+  }
+
+  try {
+    console.log(`🔍 Verifying booster purchase: ${transactionHash}`);
+
+    // Query blockchain for transaction
+    const txResult = await suiClient.getTransactionBlock({
+      digest: transactionHash,
+      options: {
+        showEvents: true,
+        showEffects: true,
+        showObjectChanges: true,
+      },
+    });
+
+    // Check transaction success
+    let isSuccess = false;
+    const effects = txResult.effects;
+
+    if (effects && effects.status) {
+      if (typeof effects.status === 'string') {
+        isSuccess = effects.status.toLowerCase() === 'success';
+      } else if (typeof effects.status === 'object') {
+        isSuccess = 'Success' in effects.status;
+      }
+    }
+
+    if (!isSuccess) {
+      return res.json({
+        success: false,
+        verified: false,
+        message: "Transaction failed or not confirmed"
+      });
+    }
+
+    // Look for booster pack object in created objects
+    let boosterPackObjectId = null;
+    
+    if (effects.created && Array.isArray(effects.created)) {
+      for (const created of effects.created) {
+        const objectId = created?.reference?.objectId;
+        const owner = created?.owner;
+        
+        // Find object owned by wallet (the booster pack)
+        if (objectId && owner && typeof owner === 'object') {
+          if (owner.AddressOwner && owner.AddressOwner === walletAddress) {
+            boosterPackObjectId = objectId;
+            console.log(`Found booster pack object: ${boosterPackObjectId}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Update database record
+    const { data: purchase, error: updateError } = await supabase
+      .from("booster_purchases")
+      .update({
+        transaction_hash: transactionHash,
+        booster_pack_object_id: boosterPackObjectId,
+        purchase_status: 'completed',
+        blockchain_verified: true,
+        last_blockchain_sync: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('wallet_address', walletAddress)
+      .eq('transaction_hash', transactionHash)
+      .or(`transaction_hash.is.null,transaction_hash.eq.${transactionHash}`)
+      .select()
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (updateError) {
+      console.error("Purchase update error:", updateError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to update purchase record"
+      });
+    }
+
+    console.log(`✅ Booster purchase verified and updated`);
+
+    res.json({
+      success: true,
+      verified: true,
+      boosterPackObjectId: boosterPackObjectId,
+      purchase: purchase,
+      message: "Booster purchase verified successfully"
+    });
+
+  } catch (err) {
+    console.error("Verify purchase error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Verification failed: " + err.message
+    });
+  }
+});
+
+// Get user's booster inventory
+app.get("/booster-inventory/:walletAddress", async (req, res) => {
+  const { walletAddress } = req.params;
+
+  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid wallet address"
+    });
+  }
+
+  try {
+    console.log(`📦 Fetching booster inventory for: ${walletAddress}`);
+
+    // Query all purchases for this wallet
+    const { data: purchases, error: queryError } = await supabase
+      .from("booster_purchases")
+      .select("*")
+      .eq("wallet_address", walletAddress)
+      .order("purchased_at", { ascending: false });
+
+    if (queryError) {
+      console.error("Inventory query error:", queryError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to fetch inventory"
+      });
+    }
+
+    // Categorize purchases
+    const unopened = purchases.filter(p => !p.is_opened && p.purchase_status === 'completed');
+    const opened = purchases.filter(p => p.is_opened);
+    const pending = purchases.filter(p => p.purchase_status === 'pending');
+
+    console.log(`📊 Inventory: ${unopened.length} unopened, ${opened.length} opened, ${pending.length} pending`);
+
+    res.json({
+      success: true,
+      inventory: {
+        unopened: unopened,
+        opened: opened,
+        pending: pending,
+        totalPurchases: purchases.length
+      },
+      summary: {
+        unopenedCount: unopened.length,
+        openedCount: opened.length,
+        pendingCount: pending.length,
+        totalCount: purchases.length
+      }
+    });
+
+  } catch (err) {
+    console.error("Inventory fetch error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch inventory: " + err.message
+    });
+  }
+});
+
+// Mark booster as opened
+app.post("/mark-booster-opened", async (req, res) => {
+  const { 
+    walletAddress, 
+    boosterPackObjectId, 
+    openTransactionHash 
+  } = req.body;
+
+  if (!walletAddress || !boosterPackObjectId) {
+    return res.status(400).json({
+      success: false,
+      error: "Wallet address and booster pack ID required"
+    });
+  }
+
+  try {
+    console.log(`📭 Marking booster as opened: ${boosterPackObjectId}`);
+
+    const { data: purchase, error: updateError } = await supabase
+      .from("booster_purchases")
+      .update({
+        is_opened: true,
+        opened_at: new Date().toISOString(),
+        open_transaction_hash: openTransactionHash || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('wallet_address', walletAddress)
+      .eq('booster_pack_object_id', boosterPackObjectId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error("Mark opened error:", updateError);
+      return res.status(500).json({
+        success: false,
+        error: "Failed to mark booster as opened"
+      });
+    }
+
+    console.log(`✅ Booster marked as opened`);
+
+    res.json({
+      success: true,
+      message: "Booster marked as opened",
+      purchase: purchase
+    });
+
+  } catch (err) {
+    console.error("Mark opened error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to mark booster as opened: " + err.message
+    });
+  }
+});
+
+// Sync all booster packs from blockchain
+app.post("/sync-booster-inventory", async (req, res) => {
+  const { walletAddress } = req.body;
+
+  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
+    return res.status(400).json({
+      success: false,
+      error: "Invalid wallet address"
+    });
+  }
+
+  try {
+    console.log(`🔄 Syncing booster inventory for: ${walletAddress}`);
+
+    // Query blockchain for booster packs
+    const ownedObjects = await suiClient.getOwnedObjects({
+      owner: walletAddress,
+      filter: {
+        StructType: `${SUI_PACKAGE_ID}::booster::BoosterPack`
+      },
+      options: {
+        showContent: true,
+        showType: true
+      }
+    });
+
+    console.log(`Found ${ownedObjects.data.length} booster packs on blockchain`);
+
+    // Get user profile
+    const { data: userProfile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (!userProfile) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+
+    let syncedCount = 0;
+
+    for (const obj of ownedObjects.data) {
+      if (!obj.data || !obj.data.content) continue;
+
+      const objectId = obj.data.objectId;
+      
+      // Check if this booster is already in database
+      const { data: existing } = await supabase
+        .from("booster_purchases")
+        .select("id")
+        .eq("booster_pack_object_id", objectId)
+        .maybeSingle();
+
+      if (!existing) {
+        // Add to database
+        await supabase
+          .from("booster_purchases")
+          .insert({
+            user_profile_id: userProfile.id,
+            wallet_address: walletAddress,
+            booster_pack_object_id: objectId,
+            booster_pack_serial: "unknown_pack",
+            booster_pack_name: "Synced Pack",
+            purchase_status: 'completed',
+            blockchain_verified: true,
+            is_opened: false,
+            last_blockchain_sync: new Date().toISOString()
+          });
+
+        syncedCount++;
+        console.log(`Added booster pack: ${objectId}`);
+      }
+    }
+
+    console.log(`✅ Synced ${syncedCount} new booster packs`);
+
+    res.json({
+      success: true,
+      message: `Synced ${syncedCount} booster packs from blockchain`,
+      totalFound: ownedObjects.data.length,
+      newlySynced: syncedCount
+    });
+
+  } catch (err) {
+    console.error("Sync inventory error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to sync inventory: " + err.message
+    });
+  }
+});
 
 // Add this debug endpoint to your server.js to see the raw transaction data
 
