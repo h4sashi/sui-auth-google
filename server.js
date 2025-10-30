@@ -1361,7 +1361,7 @@ app.post("/verify-transaction", async (req, res) => {
             .eq("purchase_status", "completed");
 
           if (!unopenedError && unopenedBoosters?.length > 0) {
-            console.log(`🎮 DEBUG: Player ${walletAddress} has ${unopenedBoosters.length} unopened booster(s):`, 
+            console.log(`🎮 DEBUG: Player ${walletAddress} has ${unopenedBoosters.length} unopened booster(s):`,
               unopenedBoosters.map(b => ({
                 serial: b.booster_pack_serial,
                 objectId: b.booster_pack_object_id,
@@ -1400,6 +1400,164 @@ app.post("/verify-transaction", async (req, res) => {
       success: false,
       verified: false,
       error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
+    });
+  }
+  // === BOOSTER OPENING VERIFICATION ===
+  try {
+    // Check if this transaction opened a booster
+    const { data: unopenedBoosters } = await supabase
+      .from("booster_purchases")
+      .select("*")
+      .eq("wallet_address", walletAddress)
+      .eq("is_opened", false)
+      .eq("purchase_status", "completed");
+
+    if (unopenedBoosters && unopenedBoosters.length > 0) {
+      // Extract card objects created by this transaction
+      const cardObjects = [];
+
+      if (effects.created && Array.isArray(effects.created)) {
+        for (const created of effects.created) {
+          const objectId = created?.reference?.objectId;
+          const owner = created?.owner;
+
+          // Cards are owned by ObjectOwner (the binder)
+          if (objectId && owner && typeof owner === 'object' && 'ObjectOwner' in owner) {
+            // Fetch card details from blockchain
+            try {
+              const cardObject = await suiClient.getObject({
+                id: objectId,
+                options: { showContent: true }
+              });
+
+              if (cardObject.data?.content?.fields) {
+                const fields = cardObject.data.content.fields;
+                cardObjects.push({
+                  card_object_id: objectId,
+                  card_serial: fields.serial || fields.card_serial,
+                  card_name: fields.name || fields.card_name,
+                  rarity: fields.rarity,
+                  card_type: fields.card_type || fields.type,
+                  element: fields.element,
+                  attack_power: fields.attack || fields.attack_power,
+                  defense_power: fields.defense || fields.defense_power,
+                  mana_cost: fields.mana_cost || fields.cost
+                });
+              }
+            } catch (err) {
+              console.error(`Failed to fetch card ${objectId}:`, err);
+            }
+          }
+        }
+      }
+
+      // If we found cards, this was a booster opening
+      if (cardObjects.length > 0) {
+        console.log(`🎴 Detected ${cardObjects.length} cards opened from booster`);
+
+        // Get user profile
+        const { data: userProfile } = await supabase
+          .from("user_profiles")
+          .select("id")
+          .eq("sui_address", walletAddress)
+          .single();
+
+        if (userProfile) {
+          // Find which booster was opened (match by object ID or use first unopened)
+          const openedBooster = unopenedBoosters[0]; // Simplest approach
+
+          // Insert cards into user_cards
+          const cardsToInsert = cardObjects.map(card => ({
+            user_profile_id: userProfile.id,
+            booster_purchase_id: openedBooster.id,
+            card_object_id: card.card_object_id,
+            card_serial: card.card_serial,
+            card_name: card.card_name,
+            rarity: card.rarity,
+            card_type: card.card_type,
+            element: card.element,
+            attack_power: card.attack_power,
+            defense_power: card.defense_power,
+            mana_cost: card.mana_cost,
+            obtained_from: 'booster_pack',
+            blockchain_verified: true,
+            obtained_at: new Date().toISOString()
+          }));
+
+          const { error: insertError } = await supabase
+            .from("user_cards")
+            .insert(cardsToInsert);
+
+          if (insertError) {
+            console.error("Failed to insert cards:", insertError);
+          } else {
+            console.log(`✅ Inserted ${cardObjects.length} cards into user_cards`);
+
+            // Mark booster as opened
+            await supabase
+              .from("booster_purchases")
+              .update({
+                is_opened: true,
+                opened_at: new Date().toISOString(),
+                open_transaction_hash: transactionHash
+              })
+              .eq("id", openedBooster.id);
+
+            console.log(`✅ Booster ${openedBooster.id} marked as opened`);
+          }
+        }
+      }
+    }
+  } catch (boosterOpenErr) {
+    console.error("Error during booster opening verification:", boosterOpenErr);
+  }
+
+});
+
+// Add to server.js
+app.get("/user-opened-cards/:transactionHash", async (req, res) => {
+  const { transactionHash } = req.params;
+
+  try {
+    // Find booster opened by this transaction
+    const { data: booster, error: boosterError } = await supabase
+      .from("booster_purchases")
+      .select("id, user_profile_id")
+      .eq("open_transaction_hash", transactionHash)
+      .single();
+
+    if (boosterError || !booster) {
+      return res.status(404).json({
+        success: false,
+        error: "No opened booster found"
+      });
+    }
+
+    // Get cards from this booster
+    const { data: cards, error: cardsError } = await supabase
+      .from("user_cards")
+      .select("*")
+      .eq("booster_purchase_id", booster.id)
+      .order("obtained_at", { ascending: true });
+
+    if (cardsError) {
+      return res.status(500).json({
+        success: false,
+        error: "Failed to fetch cards"
+      });
+    }
+
+    res.json({
+      success: true,
+      cards: cards || [],
+      boosterId: booster.id
+    });
+
+  } catch (err) {
+    console.error("Error fetching opened cards:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
     });
   }
 });
@@ -1919,6 +2077,7 @@ app.post("/buy-booster", async (req, res) => {
 });
 
 
+// REPLACE your /open-booster endpoint in server.js with this fixed version
 
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
@@ -1930,34 +2089,89 @@ app.post("/open-booster", async (req, res) => {
 
   try {
     console.log(`Creating open booster transaction for: ${walletAddress}`);
+    console.log(`Binder ID: ${binderId}`);
+    console.log(`Booster Pack Serial: ${boosterPackSerial}`);
 
+    // CRITICAL: Find the actual booster pack object ID from database
+    const { data: userProfile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (!userProfile) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+
+    // Get the first unopened booster pack with this serial
+    const { data: boosterPack, error: boosterError } = await supabase
+      .from("booster_purchases")
+      .select("booster_pack_object_id, booster_pack_serial, id")
+      .eq("user_profile_id", userProfile.id)
+      .eq("booster_pack_serial", boosterPackSerial)
+      .eq("is_opened", false)
+      .eq("purchase_status", "completed")
+      .order("purchased_at", { ascending: true })
+      .limit(1)
+      .single();
+
+    if (boosterError || !boosterPack) {
+      console.error("No unopened booster found:", boosterError);
+      return res.status(404).json({
+        success: false,
+        error: "No unopened booster pack found with this serial"
+      });
+    }
+
+    if (!boosterPack.booster_pack_object_id) {
+      return res.status(400).json({
+        success: false,
+        error: "Booster pack object ID is missing - please contact support"
+      });
+    }
+
+    console.log(`Found booster pack object ID: ${boosterPack.booster_pack_object_id}`);
+
+    // Construct Move transaction with CORRECT argument order
     const tx = new Transaction();
+
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
       arguments: [
-        tx.object(GLOBAL_CONFIG_ID),
-        tx.object(CATALOG_REGISTRY_ID),
-        tx.object(CARD_REGISTRY_ID),
-        tx.object(binderId),
-        tx.pure.string(boosterPackSerial),
-        tx.object(RANDOM_ID),
-        tx.object(CLOCK_ID),
+        tx.object(GLOBAL_CONFIG_ID),           // arg 0: GlobalConfig
+        tx.object(CATALOG_REGISTRY_ID),        // arg 1: CatalogRegistry
+        tx.object(CARD_REGISTRY_ID),           // arg 2: CardRegistry
+        tx.object(boosterPack.booster_pack_object_id), // arg 3: BoosterPack (NOT binder!)
+        tx.object(binderId),                   // arg 4: Binder
+        tx.object(RANDOM_ID),                  // arg 5: Random
+        tx.object(CLOCK_ID),                   // arg 6: Clock
       ],
     });
 
     tx.setSender(walletAddress);
-
-    // FIXED: Increased from 12000000 to 60000000 (0.06 SUI)
-    // Open booster uses randomness which needs more gas
-    tx.setGasBudget(60000000);
+    tx.setGasBudget(100000000); // Increased to 0.1 SUI for safety
 
     const serializedTx = tx.serialize();
     console.log("Open booster transaction serialized successfully");
+    console.log(`Transaction will open booster: ${boosterPack.booster_pack_object_id}`);
+
+    // Mark this booster as being opened (optimistic update)
+    await supabase
+      .from("booster_purchases")
+      .update({
+        purchase_status: 'opening' // Temporary status while tx is pending
+      })
+      .eq("id", boosterPack.id);
 
     res.json({
       success: true,
       message: "Open booster transaction prepared.",
       txBlock: serializedTx,
+      boosterPackId: boosterPack.id,
+      boosterObjectId: boosterPack.booster_pack_object_id
     });
   } catch (err) {
     console.error("Open booster error:", err);
