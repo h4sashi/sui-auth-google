@@ -2076,9 +2076,7 @@ app.post("/buy-booster", async (req, res) => {
   }
 });
 
-
-// REPLACE your /open-booster endpoint in server.js with this fixed version
-
+// FIXED /open-booster endpoint in server.js
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
 
@@ -2092,7 +2090,7 @@ app.post("/open-booster", async (req, res) => {
     console.log(`Binder ID: ${binderId}`);
     console.log(`Booster Pack Serial: ${boosterPackSerial}`);
 
-    // CRITICAL: Find the actual booster pack object ID from database
+    // Find the actual booster pack object ID from database
     const { data: userProfile } = await supabase
       .from("user_profiles")
       .select("id")
@@ -2135,24 +2133,24 @@ app.post("/open-booster", async (req, res) => {
 
     console.log(`Found booster pack object ID: ${boosterPack.booster_pack_object_id}`);
 
-    // Construct Move transaction with CORRECT argument order
+    // ✅ FIXED: Use tx.object() instead of tx.pure.string() for the booster pack
     const tx = new Transaction();
 
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
       arguments: [
-        tx.object(GLOBAL_CONFIG_ID),           // arg 0: GlobalConfig
-        tx.object(CATALOG_REGISTRY_ID),        // arg 1: CatalogRegistry
-        tx.object(CARD_REGISTRY_ID),           // arg 2: CardRegistry
-        tx.object(boosterPack.booster_pack_object_id), // arg 3: BoosterPack (NOT binder!)
-        tx.object(binderId),                   // arg 4: Binder
-        tx.object(RANDOM_ID),                  // arg 5: Random
-        tx.object(CLOCK_ID),                   // arg 6: Clock
+        tx.object(GLOBAL_CONFIG_ID),                      // arg 0: GlobalConfig
+        tx.object(CATALOG_REGISTRY_ID),                   // arg 1: CatalogRegistry
+        tx.object(CARD_REGISTRY_ID),                      // arg 2: CardRegistry
+        tx.object(boosterPack.booster_pack_object_id),    // arg 3: BoosterPack ✅ FIXED: was tx.pure.string()
+        tx.object(binderId),                              // arg 4: Binder
+        tx.object(RANDOM_ID),                             // arg 5: Random
+        tx.object(CLOCK_ID),                              // arg 6: Clock
       ],
     });
 
     tx.setSender(walletAddress);
-    tx.setGasBudget(100000000); // Increased to 0.1 SUI for safety
+    tx.setGasBudget(100000000); // 0.1 SUI
 
     const serializedTx = tx.serialize();
     console.log("Open booster transaction serialized successfully");
@@ -2178,6 +2176,7 @@ app.post("/open-booster", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 
