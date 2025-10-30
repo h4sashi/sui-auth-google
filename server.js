@@ -2076,21 +2076,207 @@ app.post("/buy-booster", async (req, res) => {
   }
 });
 
-// FIXED /open-booster endpoint in server.js
+
+
+// Replace your /open-booster endpoint with this fixed version
+
 app.post("/open-booster", async (req, res) => {
   if (!requireContractIds(res)) return;
 
   const { walletAddress, binderId, boosterPackSerial } = req.body;
+  
   if (!walletAddress || !binderId || !boosterPackSerial) {
-    return res.status(400).json({ success: false, error: "Missing required fields." });
+    return res.status(400).json({ 
+      success: false, 
+      error: "Missing required fields: walletAddress, binderId, or boosterPackSerial" 
+    });
   }
 
   try {
-    console.log(`Creating open booster transaction for: ${walletAddress}`);
-    console.log(`Binder ID: ${binderId}`);
-    console.log(`Booster Pack Serial: ${boosterPackSerial}`);
+    console.log(`🎴 Creating open booster transaction for: ${walletAddress}`);
+    console.log(`📦 Binder ID: ${binderId}`);
+    console.log(`🎁 Booster Pack Serial: ${boosterPackSerial}`);
 
-    // Find the actual booster pack object ID from database
+    // 1. Get user profile
+    const { data: userProfile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("sui_address", walletAddress)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.error("User profile not found:", profileError);
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+
+    // 2. Get the unopened booster pack
+    const { data: boosterPack, error: boosterError } = await supabase
+      .from("booster_purchases")
+      .select("*")
+      .eq("user_profile_id", userProfile.id)
+      .eq("booster_pack_serial", boosterPackSerial)
+      .eq("is_opened", false)
+      .eq("purchase_status", "completed")
+      .not("booster_pack_object_id", "is", null) // ✅ CRITICAL: Ensure object ID exists
+      .order("purchased_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(); // Use maybeSingle to handle no results gracefully
+
+    // 3. Validate booster pack exists
+    if (boosterError || !boosterPack) {
+      console.error("No unopened booster found:", boosterError);
+      return res.status(404).json({
+        success: false,
+        error: "No unopened booster pack found with this serial. Please purchase a booster first."
+      });
+    }
+
+    // 4. Validate object ID
+    if (!boosterPack.booster_pack_object_id) {
+      console.error("Booster pack missing object ID:", boosterPack.id);
+      return res.status(400).json({
+        success: false,
+        error: "Booster pack object ID is missing. This booster may not have been properly created on-chain."
+      });
+    }
+
+    const boosterObjectId = boosterPack.booster_pack_object_id;
+    console.log(`✅ Found unopened booster: ${boosterObjectId}`);
+
+    // 5. Verify object exists on blockchain
+    try {
+      const objectCheck = await suiClient.getObject({
+        id: boosterObjectId,
+        options: { showOwner: true, showType: true }
+      });
+
+      if (!objectCheck.data) {
+        console.error(`Booster object ${boosterObjectId} does not exist on blockchain`);
+        return res.status(400).json({
+          success: false,
+          error: "Booster pack not found on blockchain. It may have been already opened or deleted."
+        });
+      }
+
+      console.log(`✅ Booster verified on blockchain:`, {
+        objectId: boosterObjectId,
+        owner: objectCheck.data.owner,
+        type: objectCheck.data.type
+      });
+
+    } catch (blockchainError) {
+      console.error(`Blockchain verification failed for ${boosterObjectId}:`, blockchainError);
+      return res.status(400).json({
+        success: false,
+        error: `Booster pack verification failed: ${blockchainError.message}`
+      });
+    }
+
+    // 6. Build transaction with verified object
+    console.log("🔨 Building open booster transaction...");
+    const tx = new Transaction();
+
+    // Check ownership to determine how to pass the booster
+    const ownerInfo = objectCheck.data.owner;
+    let isOwnedByBinder = false;
+
+    if (ownerInfo && typeof ownerInfo === 'object') {
+      // Check if owned by another object (the Binder)
+      if ('ObjectOwner' in ownerInfo) {
+        isOwnedByBinder = true;
+        console.log(`⚠️ Booster is owned by object: ${ownerInfo.ObjectOwner}`);
+      } else if ('AddressOwner' in ownerInfo) {
+        console.log(`✅ Booster is owned by address: ${ownerInfo.AddressOwner}`);
+      }
+    }
+
+    // Build the move call based on ownership
+    if (isOwnedByBinder) {
+      // If owned by binder, we might need to access it through the binder
+      // This is a common pattern where the booster is a dynamic field of the binder
+      console.log("🔄 Using binder-owned booster pattern");
+      
+      // Try using tx.object() with receiving argument
+      tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::booster::open_booster`,
+        arguments: [
+          tx.object(GLOBAL_CONFIG_ID),       // arg 0: GlobalConfig
+          tx.object(CATALOG_REGISTRY_ID),    // arg 1: CatalogRegistry
+          tx.object(CARD_REGISTRY_ID),       // arg 2: CardRegistry
+          tx.object(boosterObjectId),        // arg 3: BoosterPack (as receiving)
+          tx.object(binderId),               // arg 4: Binder
+          tx.object(RANDOM_ID),              // arg 5: Random
+          tx.object(CLOCK_ID),               // arg 6: Clock
+        ],
+      });
+    } else {
+      // Standard pattern - booster owned by wallet
+      console.log("✅ Using wallet-owned booster pattern");
+      
+      tx.moveCall({
+        target: `${SUI_PACKAGE_ID}::booster::open_booster`,
+        arguments: [
+          tx.object(GLOBAL_CONFIG_ID),       // arg 0: GlobalConfig
+          tx.object(CATALOG_REGISTRY_ID),    // arg 1: CatalogRegistry
+          tx.object(CARD_REGISTRY_ID),       // arg 2: CardRegistry
+          tx.object(boosterObjectId),        // arg 3: BoosterPack
+          tx.object(binderId),               // arg 4: Binder
+          tx.object(RANDOM_ID),              // arg 5: Random
+          tx.object(CLOCK_ID),               // arg 6: Clock
+        ],
+      });
+    }
+
+    tx.setSender(walletAddress);
+    tx.setGasBudget(100000000); // 0.1 SUI
+
+    const serializedTx = tx.serialize();
+    console.log("✅ Transaction serialized successfully");
+    console.log(`📤 Transaction size: ${serializedTx.length} bytes`);
+
+    // 7. Mark booster as being opened (optimistic update)
+    await supabase
+      .from("booster_purchases")
+      .update({
+        purchase_status: 'opening',
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", boosterPack.id);
+
+    console.log(`🎯 Booster ${boosterPack.id} marked as 'opening'`);
+
+    // 8. Return success response
+    res.json({
+      success: true,
+      message: "Open booster transaction prepared successfully",
+      txBlock: serializedTx,
+      boosterPackId: boosterPack.id,
+      boosterObjectId: boosterObjectId,
+      debug: {
+        walletAddress,
+        binderId,
+        boosterPackSerial,
+        boosterObjectId
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ Open booster error:", err);
+    res.status(500).json({ 
+      success: false, 
+      error: `Failed to prepare open booster transaction: ${err.message}` 
+    });
+  }
+});
+
+// Debug endpoint to check booster pack state
+app.get("/debug-booster/:walletAddress/:boosterSerial", async (req, res) => {
+  const { walletAddress, boosterSerial } = req.params;
+
+  try {
     const { data: userProfile } = await supabase
       .from("user_profiles")
       .select("id")
@@ -2098,84 +2284,110 @@ app.post("/open-booster", async (req, res) => {
       .single();
 
     if (!userProfile) {
-      return res.status(404).json({
-        success: false,
-        error: "User profile not found"
-      });
+      return res.status(404).json({ error: "User not found" });
     }
 
-    // Get the first unopened booster pack with this serial
-    const { data: boosterPack, error: boosterError } = await supabase
+    const { data: boosters } = await supabase
       .from("booster_purchases")
-      .select("booster_pack_object_id, booster_pack_serial, id")
+      .select("*")
       .eq("user_profile_id", userProfile.id)
-      .eq("booster_pack_serial", boosterPackSerial)
-      .eq("is_opened", false)
-      .eq("purchase_status", "completed")
-      .order("purchased_at", { ascending: true })
-      .limit(1)
-      .single();
+      .eq("booster_pack_serial", boosterSerial)
+      .order("purchased_at", { ascending: false });
 
-    if (boosterError || !boosterPack) {
-      console.error("No unopened booster found:", boosterError);
-      return res.status(404).json({
-        success: false,
-        error: "No unopened booster pack found with this serial"
-      });
-    }
+    // Check blockchain state for each booster
+    const boostersWithBlockchainStatus = await Promise.all(
+      (boosters || []).map(async (booster) => {
+        let blockchainStatus = "N/A";
+        let objectDetails = null;
+        
+        if (booster.booster_pack_object_id) {
+          try {
+            const obj = await suiClient.getObject({
+              id: booster.booster_pack_object_id,
+              options: { 
+                showOwner: true, 
+                showType: true,
+                showContent: true,
+                showDisplay: true
+              }
+            });
+            
+            if (obj.data) {
+              blockchainStatus = "EXISTS";
+              objectDetails = {
+                objectId: obj.data.objectId,
+                type: obj.data.type,
+                owner: obj.data.owner,
+                content: obj.data.content
+              };
+            } else {
+              blockchainStatus = "NOT_FOUND";
+            }
+          } catch (e) {
+            blockchainStatus = `ERROR: ${e.message}`;
+          }
+        } else {
+          blockchainStatus = "NO_OBJECT_ID";
+        }
 
-    if (!boosterPack.booster_pack_object_id) {
-      return res.status(400).json({
-        success: false,
-        error: "Booster pack object ID is missing - please contact support"
-      });
-    }
-
-    console.log(`Found booster pack object ID: ${boosterPack.booster_pack_object_id}`);
-
-    // ✅ FIXED: Use tx.object() instead of tx.pure.string() for the booster pack
-    const tx = new Transaction();
-
-    tx.moveCall({
-      target: `${SUI_PACKAGE_ID}::booster::open_booster`,
-      arguments: [
-        tx.object(GLOBAL_CONFIG_ID),                      // arg 0: GlobalConfig
-        tx.object(CATALOG_REGISTRY_ID),                   // arg 1: CatalogRegistry
-        tx.object(CARD_REGISTRY_ID),                      // arg 2: CardRegistry
-        tx.object(boosterPack.booster_pack_object_id),    // arg 3: BoosterPack ✅ FIXED: was tx.pure.string()
-        tx.object(binderId),                              // arg 4: Binder
-        tx.object(RANDOM_ID),                             // arg 5: Random
-        tx.object(CLOCK_ID),                              // arg 6: Clock
-      ],
-    });
-
-    tx.setSender(walletAddress);
-    tx.setGasBudget(100000000); // 0.1 SUI
-
-    const serializedTx = tx.serialize();
-    console.log("Open booster transaction serialized successfully");
-    console.log(`Transaction will open booster: ${boosterPack.booster_pack_object_id}`);
-
-    // Mark this booster as being opened (optimistic update)
-    await supabase
-      .from("booster_purchases")
-      .update({
-        purchase_status: 'opening' // Temporary status while tx is pending
+        return {
+          ...booster,
+          blockchainStatus,
+          objectDetails
+        };
       })
-      .eq("id", boosterPack.id);
+    );
 
     res.json({
       success: true,
-      message: "Open booster transaction prepared.",
-      txBlock: serializedTx,
-      boosterPackId: boosterPack.id,
-      boosterObjectId: boosterPack.booster_pack_object_id
+      boosters: boostersWithBlockchainStatus
     });
+
   } catch (err) {
-    console.error("Open booster error:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
+
+// NEW: Detailed object inspector
+app.get("/inspect-object/:objectId", async (req, res) => {
+  const { objectId } = req.params;
+
+  try {
+    console.log(`🔍 Inspecting object: ${objectId}`);
+
+    const obj = await suiClient.getObject({
+      id: objectId,
+      options: {
+        showOwner: true,
+        showType: true,
+        showContent: true,
+        showDisplay: true,
+        showPreviousTransaction: true
+      }
+    });
+
+    if (!obj.data) {
+      return res.status(404).json({
+        success: false,
+        error: "Object not found on blockchain"
+      });
+    }
+
+    res.json({
+      success: true,
+      object: obj.data,
+      rawResponse: obj
+    });
+
+  } catch (err) {
+    console.error("Object inspection error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 
 
 
