@@ -2079,12 +2079,15 @@ app.post("/buy-booster", async (req, res) => {
 
 // Replace your entire /open-booster endpoint with this version
 
+// CORRECTED /open-booster endpoint - uses serial string, not object ID
+
 app.post("/open-booster", async (req, res) => {
   console.log("🎴 === OPEN BOOSTER REQUEST RECEIVED ===");
   
   try {
     // 1. Validate required contract IDs
-    if (!SUI_PACKAGE_ID || !GLOBAL_CONFIG_ID || !BINDER_REGISTRY_ID) {
+    if (!SUI_PACKAGE_ID || !GLOBAL_CONFIG_ID || !CATALOG_REGISTRY_ID || 
+        !CARD_REGISTRY_ID || !RANDOM_ID || !CLOCK_ID) {
       console.error("❌ Contract addresses not configured");
       return res.status(500).json({ 
         success: false, 
@@ -2135,7 +2138,7 @@ app.post("/open-booster", async (req, res) => {
 
     console.log("✅ User profile found:", userProfile.id);
 
-    // 4. Get the unopened booster pack
+    // 4. Get the unopened booster pack (for validation and DB tracking)
     console.log("🔍 Looking for unopened booster...");
     const { data: boosterPack, error: boosterError } = await supabase
       .from("booster_purchases")
@@ -2144,7 +2147,6 @@ app.post("/open-booster", async (req, res) => {
       .eq("booster_pack_serial", boosterPackSerial)
       .eq("is_opened", false)
       .eq("purchase_status", "completed")
-      .not("booster_pack_object_id", "is", null)
       .order("purchased_at", { ascending: true })
       .limit(1)
       .maybeSingle();
@@ -2167,84 +2169,41 @@ app.post("/open-booster", async (req, res) => {
 
     console.log("✅ Found unopened booster:", {
       id: boosterPack.id,
-      objectId: boosterPack.booster_pack_object_id?.substring(0, 20) + "...",
+      serial: boosterPackSerial,
       purchasedAt: boosterPack.purchased_at
     });
 
-    // 5. Validate object ID exists
-    if (!boosterPack.booster_pack_object_id) {
-      console.error("❌ Booster pack missing object ID");
-      return res.status(400).json({
-        success: false,
-        error: "Booster pack object ID is missing. This booster may not have been properly created on-chain."
-      });
-    }
-
-    const boosterObjectId = boosterPack.booster_pack_object_id;
-    console.log(`🎯 Target booster object: ${boosterObjectId}`);
-
-    // 6. Verify object exists on blockchain
-    console.log("🔗 Verifying object on blockchain...");
-    let objectCheck;
-    try {
-      objectCheck = await suiClient.getObject({
-        id: boosterObjectId,
-        options: { 
-          showOwner: true, 
-          showType: true,
-          showContent: true 
-        }
-      });
-
-      if (!objectCheck.data) {
-        console.error(`❌ Object not found on blockchain`);
-        return res.status(400).json({
-          success: false,
-          error: "Booster pack not found on blockchain. It may have been already opened or deleted."
-        });
-      }
-
-      console.log("✅ Object verified on blockchain:", {
-        objectId: boosterObjectId.substring(0, 20) + "...",
-        type: objectCheck.data.type,
-        owner: objectCheck.data.owner
-      });
-
-    } catch (blockchainError) {
-      console.error(`❌ Blockchain verification failed:`, blockchainError.message);
-      return res.status(400).json({
-        success: false,
-        error: `Booster pack verification failed: ${blockchainError.message}`
-      });
-    }
-
-    // 7. Build transaction
+    // 5. Build transaction - CORRECT VERSION WITH STRING SERIAL
     console.log("🔨 Building open booster transaction...");
     
     const tx = new Transaction();
 
     try {
+      // ✅ CRITICAL FIX: Pass STRING serial, not object ID
       tx.moveCall({
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
         arguments: [
-          tx.object(GLOBAL_CONFIG_ID),       // arg 0: &GlobalConfig
-          tx.object(CATALOG_REGISTRY_ID),    // arg 1: &CatalogRegistry
-          tx.object(CARD_REGISTRY_ID),       // arg 2: &CardRegistry
-          tx.object(boosterObjectId),        // arg 3: BoosterPack object
-          tx.object(binderId),               // arg 4: &mut Binder
-          tx.object(RANDOM_ID),              // arg 5: &Random
-          tx.object(CLOCK_ID),               // arg 6: &Clock
+          tx.object(GLOBAL_CONFIG_ID),          // arg 0: &GlobalConfig
+          tx.object(CATALOG_REGISTRY_ID),       // arg 1: &CatalogRegistry
+          tx.object(CARD_REGISTRY_ID),          // arg 2: &mut CardRegistry
+          tx.object(binderId),                  // arg 3: &mut Binder
+          tx.pure.string(boosterPackSerial),    // arg 4: String (pack serial!)
+          tx.object(RANDOM_ID),                 // arg 5: &Random
+          tx.object(CLOCK_ID),                  // arg 6: &Clock
         ],
       });
 
       tx.setSender(walletAddress);
-      tx.setGasBudget(100000000); // 0.1 SUI
+      
+      // Increased gas for card minting operations
+      tx.setGasBudget(150000000); // 0.15 SUI
 
       console.log("✅ Transaction built successfully");
       console.log("📋 Transaction details:", {
         sender: walletAddress.substring(0, 20) + "...",
-        gasBudget: "100000000 (0.1 SUI)",
-        target: `${SUI_PACKAGE_ID}::booster::open_booster`
+        gasBudget: "150000000 (0.15 SUI)",
+        target: `${SUI_PACKAGE_ID}::booster::open_booster`,
+        packSerial: boosterPackSerial
       });
 
     } catch (txBuildError) {
@@ -2255,7 +2214,7 @@ app.post("/open-booster", async (req, res) => {
       });
     }
 
-    // 8. Serialize transaction
+    // 6. Serialize transaction
     let serializedTx;
     try {
       serializedTx = tx.serialize();
@@ -2268,7 +2227,7 @@ app.post("/open-booster", async (req, res) => {
       });
     }
 
-    // 9. Update database status
+    // 7. Update database status
     console.log("💾 Updating database status...");
     try {
       await supabase
@@ -2285,7 +2244,7 @@ app.post("/open-booster", async (req, res) => {
       // Don't fail the request if DB update fails
     }
 
-    // 10. Return success response
+    // 8. Return success response
     console.log("✅ === OPEN BOOSTER REQUEST COMPLETE ===");
     
     res.json({
@@ -2293,13 +2252,13 @@ app.post("/open-booster", async (req, res) => {
       message: "Open booster transaction prepared successfully",
       txBlock: serializedTx,
       boosterPackId: boosterPack.id,
-      boosterObjectId: boosterObjectId,
+      boosterPackSerial: boosterPackSerial,
       debug: {
         walletAddress: walletAddress.substring(0, 20) + "...",
         binderId: binderId.substring(0, 20) + "...",
         boosterPackSerial,
-        boosterObjectId: boosterObjectId.substring(0, 20) + "...",
-        gasBudget: "0.1 SUI"
+        gasBudget: "0.15 SUI",
+        usesSerialString: true
       }
     });
 
@@ -2318,7 +2277,7 @@ app.post("/open-booster", async (req, res) => {
   }
 });
 
-// Debug endpoints
+// Debug endpoints remain the same
 app.get("/debug-booster/:walletAddress/:boosterSerial", async (req, res) => {
   const { walletAddress, boosterSerial } = req.params;
 
@@ -2389,6 +2348,45 @@ app.get("/debug-booster/:walletAddress/:boosterSerial", async (req, res) => {
 
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/inspect-object/:objectId", async (req, res) => {
+  const { objectId } = req.params;
+
+  try {
+    console.log(`🔍 Inspecting object: ${objectId}`);
+
+    const obj = await suiClient.getObject({
+      id: objectId,
+      options: {
+        showOwner: true,
+        showType: true,
+        showContent: true,
+        showDisplay: true,
+        showPreviousTransaction: true
+      }
+    });
+
+    if (!obj.data) {
+      return res.status(404).json({
+        success: false,
+        error: "Object not found on blockchain"
+      });
+    }
+
+    res.json({
+      success: true,
+      object: obj.data,
+      rawResponse: obj
+    });
+
+  } catch (err) {
+    console.error("Object inspection error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 });
 
