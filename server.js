@@ -1101,6 +1101,28 @@ app.post("/create-binder", async (req, res) => {
 //   }
 // });
 
+
+// Server endpoint to get user's cards
+app.get("/user-cards/:walletAddress", async (req, res) => {
+  const { walletAddress } = req.params;
+  
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("id")
+    .eq("sui_address", walletAddress)
+    .single();
+    
+  const { data: cards } = await supabase
+    .from("user_cards")
+    .select("*")
+    .eq("user_profile_id", profile.id)
+    .order("obtained_at", { ascending: false });
+    
+  res.json({ success: true, cards });
+});
+
+
+
 app.post("/verify-transaction", async (req, res) => {
   const { transactionHash, walletAddress } = req.body;
 
