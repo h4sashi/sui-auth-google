@@ -850,6 +850,10 @@ app.post("/create-binder", async (req, res) => {
   }
 });
 
+//////////
+//////
+
+///////
 
 // Replace your server /verify-transaction endpoint with this properly typed version
 
@@ -1103,23 +1107,23 @@ app.post("/create-binder", async (req, res) => {
 
 
 // Server endpoint to get user's cards
-app.get("/user-cards/:walletAddress", async (req, res) => {
-  const { walletAddress } = req.params;
+// app.get("/user-cards/:walletAddress", async (req, res) => {
+//   const { walletAddress } = req.params;
   
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("id")
-    .eq("sui_address", walletAddress)
-    .single();
+//   const { data: profile } = await supabase
+//     .from("user_profiles")
+//     .select("id")
+//     .eq("sui_address", walletAddress)
+//     .single();
     
-  const { data: cards } = await supabase
-    .from("user_cards")
-    .select("*")
-    .eq("user_profile_id", profile.id)
-    .order("obtained_at", { ascending: false });
+//   const { data: cards } = await supabase
+//     .from("user_cards")
+//     .select("*")
+//     .eq("user_profile_id", profile.id)
+//     .order("obtained_at", { ascending: false });
     
-  res.json({ success: true, cards });
-});
+//   res.json({ success: true, cards });
+// });
 
 
 
