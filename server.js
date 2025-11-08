@@ -1973,6 +1973,60 @@ app.get("/get-profile-image/:walletAddress", async (req, res) => {
 });
 
 
+
+
+// Enhanced card verification endpoint
+app.post("/verify-player-inventory", async (req, res) => {
+  const { walletAddress, cardObjectIds } = req.body;
+  
+  try {
+    // 1. Get player's binder from database
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("active_binder_id")
+      .eq("sui_address", walletAddress)
+      .single();
+    
+    // 2. Verify each card on blockchain
+    const verifiedCards = [];
+    
+    for (const cardId of cardObjectIds) {
+      const cardObject = await suiClient.getObject({
+        id: cardId,
+        options: { showOwner: true, showContent: true }
+      });
+      
+      // 3. Check ownership
+      if (cardObject.data?.owner?.ObjectOwner === profile.active_binder_id) {
+        verifiedCards.push({
+          cardId,
+          verified: true,
+          owner: profile.active_binder_id
+        });
+      } else {
+        // SECURITY ALERT: Card claimed but not owned!
+        await logSecurityIncident({
+          walletAddress,
+          cardId,
+          claimedOwner: profile.active_binder_id,
+          actualOwner: cardObject.data?.owner
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      verifiedCards,
+      totalVerified: verifiedCards.length,
+      totalClaimed: cardObjectIds.length
+    });
+    
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // app.post("/buy-booster", async (req, res) => {
 //   if (!requireContractIds(res)) return;
 
