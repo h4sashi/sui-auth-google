@@ -1945,8 +1945,6 @@ app.post("/buy-booster", async (req, res) => {
 
 // Replace your entire /open-booster endpoint with this version
 
-// CORRECTED /open-booster endpoint - uses serial string, not object ID
-
 app.post("/open-booster", async (req, res) => {
   console.log("🎴 === OPEN BOOSTER REQUEST RECEIVED ===");
   
@@ -2039,21 +2037,22 @@ app.post("/open-booster", async (req, res) => {
       purchasedAt: boosterPack.purchased_at
     });
 
-    // 5. Build transaction - CORRECT VERSION WITH STRING SERIAL
+    // 5. Build transaction - FIXED VERSION
     console.log("🔨 Building open booster transaction...");
     
     const tx = new Transaction();
 
     try {
-      // ✅ CRITICAL FIX: Pass STRING serial, not object ID
+      // ✅ CRITICAL FIX: Use tx.object() for binder (SDK handles mutability)
+      // The SDK knows from the function signature that binder should be mutable
       tx.moveCall({
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
         arguments: [
           tx.object(GLOBAL_CONFIG_ID),          // arg 0: &GlobalConfig
-          tx.object(CATALOG_REGISTRY_ID),       // arg 1: &CatalogRegistry
+          tx.object(CATALOG_REGISTRY_ID),       // arg 1: &CatalogRegistry  
           tx.object(CARD_REGISTRY_ID),          // arg 2: &mut CardRegistry
-          tx.object(binderId),                  // arg 3: &mut Binder
-          tx.pure.string(boosterPackSerial),    // arg 4: String (pack serial!)
+          tx.object(binderId),                  // arg 3: &mut Binder ⬅️ SDK handles mutability
+          tx.pure.string(boosterPackSerial),    // arg 4: String (pack serial)
           tx.object(RANDOM_ID),                 // arg 5: &Random
           tx.object(CLOCK_ID),                  // arg 6: &Clock
         ],
@@ -2069,7 +2068,8 @@ app.post("/open-booster", async (req, res) => {
         sender: walletAddress.substring(0, 20) + "...",
         gasBudget: "150000000 (0.15 SUI)",
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
-        packSerial: boosterPackSerial
+        packSerial: boosterPackSerial,
+        binderId: binderId.substring(0, 20) + "..."
       });
 
     } catch (txBuildError) {
