@@ -850,58 +850,280 @@ app.post("/create-binder", async (req, res) => {
   }
 });
 
-// Enhanced card verification endpoint
-app.post("/verify-player-inventory", async (req, res) => {
-  const { walletAddress, cardObjectIds } = req.body;
+//////////
+//////
+
+///////
+
+// Replace your server /verify-transaction endpoint with this properly typed version
+
+// app.post("/verify-transaction", async (req, res) => {
+//   const { transactionHash, walletAddress } = req.body;
+
+//   if (!transactionHash || !walletAddress) {
+//     return res.status(400).json({
+//       success: false,
+//       error: "Transaction hash and wallet address are required"
+//     });
+//   }
+
+//   try {
+//     console.log(`Verifying transaction: ${transactionHash} for wallet: ${walletAddress}`);
+
+//     // Query blockchain for transaction details
+//     const txResult = await suiClient.getTransactionBlock({
+//       digest: transactionHash,
+//       options: {
+//         showEvents: true,
+//         showEffects: true,
+//         showInput: true,
+//         showObjectChanges: true,
+//       },
+//     });
+
+//     console.log("Raw transaction result:", JSON.stringify(txResult, null, 2));
+
+//     // Check transaction status
+//     let isSuccess = false;
+//     let statusInfo = 'unknown';
+//     const effects = txResult.effects;
+
+//     if (effects) {
+//       // Check status
+//       if (typeof effects.status === 'string') {
+//         isSuccess = effects.status.toLowerCase() === 'success';
+//         statusInfo = effects.status;
+//       } else if (effects.status && typeof effects.status === 'object') {
+//         const statusObj = effects.status;
+//         if ('status' in statusObj && typeof statusObj.status === 'string') {
+//           isSuccess = statusObj.status.toLowerCase() === 'success';
+//           statusInfo = statusObj.status;
+//         } else if ('Success' in statusObj) {
+//           isSuccess = true;
+//           statusInfo = 'Success';
+//         } else if ('Failure' in statusObj) {
+//           isSuccess = false;
+//           statusInfo = 'Failure';
+//         }
+//       }
+//     }
+
+//     console.log("Transaction status:", { isSuccess, statusInfo });
+//     // === END BOOSTER VERIFICATION BLOCK ===
+
+//     if (!isSuccess) {
+//       return res.json({
+//         success: true,
+//         verified: false,
+//         message: `Transaction found but appears unsuccessful (${statusInfo})`,
+//         transactionHash: transactionHash
+//       });
+//     }
+
+//     // FIXED: Look for binder ID in effects.created array (where it actually is)
+//     let binderId = null;
+
+//     // First, check effects.created (this is where your binder actually is)
+//     if (effects.created && Array.isArray(effects.created)) {
+//       console.log(`Checking ${effects.created.length} created objects in effects...`);
+
+//       for (let i = 0; i < effects.created.length; i++) {
+//         const created = effects.created[i];
+//         const objectId = created?.reference?.objectId;
+//         const owner = created?.owner;
+
+//         if (!objectId) continue;
+
+//         console.log(`Created object ${i}:`, {
+//           objectId: objectId.substring(0, 20) + '...',
+//           owner: owner
+//         });
+
+//         // Check if this object is owned by the user (not shared, not ObjectOwner of another address)
+//         let isUserOwned = false;
+
+//         if (owner && typeof owner === 'object') {
+//           // Check for AddressOwner
+//           if (owner.AddressOwner && owner.AddressOwner === walletAddress) {
+//             isUserOwned = true;
+//           }
+//           // ObjectOwner means it's owned by another object (like a table)
+//           // Shared means it's a shared object
+//           // We want objects directly owned by the user
+//         }
+
+//         // If owned by user, this is likely the binder
+//         if (isUserOwned) {
+//           binderId = objectId;
+//           console.log(`Found user-owned object (likely binder): ${binderId}`);
+//           break;
+//         }
+//       }
+
+//       // Fallback: If we didn't find a user-owned object, look for Shared objects
+//       // (In case your binder is created as a shared object)
+//       if (!binderId) {
+//         for (const created of effects.created) {
+//           const objectId = created?.reference?.objectId;
+//           const owner = created?.owner;
+
+//           if (objectId && owner && typeof owner === 'object' && 'Shared' in owner) {
+//             binderId = objectId;
+//             console.log(`Found shared object (possibly binder): ${binderId}`);
+//             break;
+//           }
+//         }
+//       }
+//     }
+
+//     // Also check objectChanges as backup (even though it's empty in your case)
+//     if (!binderId && txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
+//       console.log(`Checking ${txResult.objectChanges.length} object changes as backup...`);
+
+//       for (const change of txResult.objectChanges) {
+//         const changeType = change && typeof change === 'object' ? change.type : null;
+//         const objectType = change && typeof change === 'object' ? change.objectType : null;
+//         const objectId = change && typeof change === 'object' ? change.objectId : null;
+
+//         if (changeType === 'created' && objectType && objectId) {
+//           const objectTypeStr = String(objectType).toLowerCase();
+
+//           if (objectTypeStr.includes('binder') ||
+//             (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()))) {
+//             binderId = objectId;
+//             console.log(`Found binder in objectChanges: ${binderId}`);
+//             break;
+//           }
+//         }
+//       }
+//     }
+
+//     // Fallback: Use first created object that's not a coin
+//     if (!binderId && effects.created && effects.created.length > 0) {
+//       console.log("Using fallback: first non-system created object");
+
+//       for (const created of effects.created) {
+//         const objectId = created?.reference?.objectId;
+
+//         // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
+//         if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
+//           binderId = objectId;
+//           console.log(`Fallback binder ID: ${binderId}`);
+//           break;
+//         }
+//       }
+//     }
+
+//     console.log(`Final binder ID determination: ${binderId || 'NOT FOUND'}`);
+
+//     // Update database if we found a binder
+//     if (binderId) {
+//       try {
+//         const { data: userProfile } = await supabase
+//           .from("user_profiles")
+//           .select("id")
+//           .eq("sui_address", walletAddress)
+//           .single();
+
+//         if (userProfile) {
+//           // Update or create transaction record
+//           const transactionData = {
+//             transaction_hash: transactionHash,
+//             binder_id: binderId,
+//             transaction_status: 'confirmed',
+//             blockchain_verified: true,
+//             updated_at: new Date().toISOString()
+//           };
+
+//           const { data: existingTx } = await supabase
+//             .from("binder_transactions")
+//             .select("id")
+//             .eq('user_profile_id', userProfile.id)
+//             .eq('wallet_address', walletAddress)
+//             .eq('transaction_status', 'pending')
+//             .maybeSingle();
+
+//           if (existingTx) {
+//             await supabase
+//               .from("binder_transactions")
+//               .update(transactionData)
+//               .eq('id', existingTx.id);
+//           } else {
+//             await supabase
+//               .from("binder_transactions")
+//               .insert({
+//                 user_profile_id: userProfile.id,
+//                 wallet_address: walletAddress,
+//                 ...transactionData,
+//                 created_at: new Date().toISOString()
+//               });
+//           }
+
+//           // Update user profile
+//           await supabase
+//             .from("user_profiles")
+//             .update({
+//               active_binder_id: binderId,
+//               binder_verified: true,
+//               binder_transaction_hash: transactionHash,
+//               last_blockchain_sync: new Date().toISOString(),
+//               updated_at: new Date().toISOString()
+//             })
+//             .eq("id", userProfile.id);
+
+//           console.log(`✅ Database updated: Binder ${binderId} verified for user ${walletAddress}`);
+//         }
+//       } catch (dbError) {
+//         console.error("Database update error:", dbError);
+//         // Don't fail the whole request due to database issues
+//       }
+//     }
+
+//     res.json({
+//       success: true,
+//       verified: !!binderId,
+//       binderId: binderId,
+//       transactionHash: transactionHash,
+//       statusInfo: statusInfo,
+//       message: binderId
+//         ? "Binder creation verified and stored successfully"
+//         : "Transaction successful but binder ID could not be determined. Please sync binders manually.",
+//       debugInfo: {
+//         createdObjectsCount: effects?.created?.length || 0,
+//         objectChangesCount: txResult.objectChanges?.length || 0,
+//         firstCreatedObject: effects?.created?.[0]?.reference?.objectId
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error("Transaction verification error:", err);
+//     res.status(500).json({
+//       success: false,
+//       verified: false,
+//       error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
+//     });
+//   }
+// });
+
+
+// Server endpoint to get user's cards
+// app.get("/user-cards/:walletAddress", async (req, res) => {
+//   const { walletAddress } = req.params;
   
-  try {
-    // 1. Get player's binder from database
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("active_binder_id")
-      .eq("sui_address", walletAddress)
-      .single();
+//   const { data: profile } = await supabase
+//     .from("user_profiles")
+//     .select("id")
+//     .eq("sui_address", walletAddress)
+//     .single();
     
-    // 2. Verify each card on blockchain
-    const verifiedCards = [];
+//   const { data: cards } = await supabase
+//     .from("user_cards")
+//     .select("*")
+//     .eq("user_profile_id", profile.id)
+//     .order("obtained_at", { ascending: false });
     
-    for (const cardId of cardObjectIds) {
-      const cardObject = await suiClient.getObject({
-        id: cardId,
-        options: { showOwner: true, showContent: true }
-      });
-      
-      // 3. Check ownership
-      if (cardObject.data?.owner?.ObjectOwner === profile.active_binder_id) {
-        verifiedCards.push({
-          cardId,
-          verified: true,
-          owner: profile.active_binder_id
-        });
-      } else {
-        // SECURITY ALERT: Card claimed but not owned!
-        await logSecurityIncident({
-          walletAddress,
-          cardId,
-          claimedOwner: profile.active_binder_id,
-          actualOwner: cardObject.data?.owner
-        });
-      }
-    }
-    
-    res.json({
-      success: true,
-      verifiedCards,
-      totalVerified: verifiedCards.length,
-      totalClaimed: cardObjectIds.length
-    });
-    
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
+//   res.json({ success: true, cards });
+// });
 
 
 
@@ -1412,68 +1634,6 @@ app.get("/user-unopened-boosters/:walletAddress", async (req, res) => {
 
 
 
-app.get("/user-cards/:walletAddress", async (req, res) => {
-  const { walletAddress } = req.params;
-  
-  if (!walletAddress || !isValidSuiAddress(walletAddress)) {
-    return res.status(400).json({ 
-      success: false, 
-      error: "Invalid wallet address" 
-    });
-  }
-
-  try {
-    console.log(`Fetching cards for wallet: ${walletAddress}`);
-
-    // Get user profile
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("id")
-      .eq("sui_address", walletAddress)
-      .single();
-    
-    if (profileError || !profile) {
-      return res.status(404).json({ 
-        success: false, 
-        error: "User profile not found" 
-      });
-    }
-
-    // Get all cards for this user
-    const { data: cards, error: cardsError } = await supabase
-      .from("user_cards")
-      .select("*")
-      .eq("user_profile_id", profile.id)
-      .order("obtained_at", { ascending: false });
-    
-    if (cardsError) {
-      console.error("Error fetching cards:", cardsError);
-      return res.status(500).json({ 
-        success: false, 
-        error: "Failed to fetch cards" 
-      });
-    }
-
-    console.log(`✅ Found ${cards?.length || 0} cards for user ${profile.id}`);
-
-    res.json({
-      success: true,
-      cards: cards || [],
-      totalCards: cards?.length || 0
-    });
-
-  } catch (err) {
-    console.error("User cards fetch error:", err);
-    res.status(500).json({ 
-      success: false, 
-      error: err.message 
-    });
-  }
-});
-
-
-
-
 
 
 // Add this debug endpoint to your server.js to see the raw transaction data
@@ -1945,13 +2105,15 @@ app.post("/buy-booster", async (req, res) => {
 
 // Replace your entire /open-booster endpoint with this version
 
+// CORRECTED /open-booster endpoint - uses serial string, not object ID
+
 app.post("/open-booster", async (req, res) => {
   console.log("🎴 === OPEN BOOSTER REQUEST RECEIVED ===");
   
   try {
     // 1. Validate required contract IDs
     if (!SUI_PACKAGE_ID || !GLOBAL_CONFIG_ID || !CATALOG_REGISTRY_ID || 
-        !CARD_REGISTRY_ID) {
+        !CARD_REGISTRY_ID || !RANDOM_ID || !CLOCK_ID) {
       console.error("❌ Contract addresses not configured");
       return res.status(500).json({ 
         success: false, 
@@ -2002,7 +2164,7 @@ app.post("/open-booster", async (req, res) => {
 
     console.log("✅ User profile found:", userProfile.id);
 
-    // 4. Get the unopened booster pack
+    // 4. Get the unopened booster pack (for validation and DB tracking)
     console.log("🔍 Looking for unopened booster...");
     const { data: boosterPack, error: boosterError } = await supabase
       .from("booster_purchases")
@@ -2037,23 +2199,23 @@ app.post("/open-booster", async (req, res) => {
       purchasedAt: boosterPack.purchased_at
     });
 
-    // 5. Build transaction - CORRECTLY THIS TIME
+    // 5. Build transaction - CORRECT VERSION WITH STRING SERIAL
     console.log("🔨 Building open booster transaction...");
     
     const tx = new Transaction();
 
     try {
-      // ✅ CRITICAL FIX: Use tx.object.random() and tx.object.clock()
+      // ✅ CRITICAL FIX: Pass STRING serial, not object ID
       tx.moveCall({
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
         arguments: [
           tx.object(GLOBAL_CONFIG_ID),          // arg 0: &GlobalConfig
-          tx.object(CATALOG_REGISTRY_ID),       // arg 1: &CatalogRegistry  
+          tx.object(CATALOG_REGISTRY_ID),       // arg 1: &CatalogRegistry
           tx.object(CARD_REGISTRY_ID),          // arg 2: &mut CardRegistry
           tx.object(binderId),                  // arg 3: &mut Binder
-          tx.pure.string(boosterPackSerial),    // arg 4: String (pack serial)
-          tx.object.random(),                   // arg 5: &Random ⬅️ SPECIAL SYNTAX
-          tx.object.clock(),                    // arg 6: &Clock ⬅️ SPECIAL SYNTAX
+          tx.pure.string(boosterPackSerial),    // arg 4: String (pack serial!)
+          tx.object(RANDOM_ID),                 // arg 5: &Random
+          tx.object(CLOCK_ID),                  // arg 6: &Clock
         ],
       });
 
@@ -2067,9 +2229,7 @@ app.post("/open-booster", async (req, res) => {
         sender: walletAddress.substring(0, 20) + "...",
         gasBudget: "150000000 (0.15 SUI)",
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
-        packSerial: boosterPackSerial,
-        binderId: binderId.substring(0, 20) + "...",
-        usesRandomAndClockSystemObjects: true
+        packSerial: boosterPackSerial
       });
 
     } catch (txBuildError) {
@@ -2107,6 +2267,7 @@ app.post("/open-booster", async (req, res) => {
       console.log(`✅ Booster ${boosterPack.id} marked as 'opening'`);
     } catch (dbUpdateError) {
       console.warn("⚠️ Database update warning:", dbUpdateError.message);
+      // Don't fail the request if DB update fails
     }
 
     // 8. Return success response
@@ -2123,11 +2284,12 @@ app.post("/open-booster", async (req, res) => {
         binderId: binderId.substring(0, 20) + "...",
         boosterPackSerial,
         gasBudget: "0.15 SUI",
-        usesSystemObjects: true
+        usesSerialString: true
       }
     });
 
   } catch (err) {
+    // Catch-all error handler
     console.error("❌ === CRITICAL ERROR IN OPEN BOOSTER ===");
     console.error("Error type:", err.constructor.name);
     console.error("Error message:", err.message);
@@ -2140,78 +2302,6 @@ app.post("/open-booster", async (req, res) => {
     });
   }
 });
-
-
-// Add this debug endpoint
-app.post("/verify-binder-ownership", async (req, res) => {
-  const { walletAddress, binderId } = req.body;
-  
-  try {
-    console.log(`🔍 Verifying binder ${binderId} for ${walletAddress}`);
-    
-    // Fetch the binder object from blockchain
-    const binderObject = await suiClient.getObject({
-      id: binderId,
-      options: { 
-        showOwner: true, 
-        showType: true,
-        showContent: true 
-      }
-    });
-    
-    if (!binderObject.data) {
-      return res.json({
-        success: false,
-        error: "Binder not found on blockchain",
-        binderId
-      });
-    }
-    
-    // Check ownership
-    const owner = binderObject.data.owner;
-    let isOwnedByUser = false;
-    
-    if (owner && typeof owner === 'object') {
-      if (owner.AddressOwner === walletAddress) {
-        isOwnedByUser = true;
-      }
-    }
-    
-    // Check if it's actually a Binder type
-    const objectType = binderObject.data.type;
-    const isBinderType = objectType && objectType.includes('::binder::Binder');
-    
-    console.log("Binder verification:", {
-      exists: true,
-      isOwnedByUser,
-      isBinderType,
-      objectType,
-      owner
-    });
-    
-    res.json({
-      success: true,
-      binderId,
-      exists: true,
-      isOwnedByUser,
-      isCorrectType: isBinderType,
-      objectType,
-      owner,
-      canOpenBooster: isOwnedByUser && isBinderType
-    });
-    
-  } catch (err) {
-    console.error("Binder verification error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
-
-
-
-
 
 // Debug endpoints remain the same
 app.get("/debug-booster/:walletAddress/:boosterSerial", async (req, res) => {
@@ -2417,287 +2507,3 @@ app.listen(PORT, () => {
   console.log(`RPC URL: ${getFullnodeUrl(NETWORK_CONFIG.current)}`);
   console.log(`Wallet Standard integration: ENABLED`);
 });
-
-
-
-
-
-
-
-
-
-
-//////////
-//////
-
-///////
-
-// Replace your server /verify-transaction endpoint with this properly typed version
-
-// app.post("/verify-transaction", async (req, res) => {
-//   const { transactionHash, walletAddress } = req.body;
-
-//   if (!transactionHash || !walletAddress) {
-//     return res.status(400).json({
-//       success: false,
-//       error: "Transaction hash and wallet address are required"
-//     });
-//   }
-
-//   try {
-//     console.log(`Verifying transaction: ${transactionHash} for wallet: ${walletAddress}`);
-
-//     // Query blockchain for transaction details
-//     const txResult = await suiClient.getTransactionBlock({
-//       digest: transactionHash,
-//       options: {
-//         showEvents: true,
-//         showEffects: true,
-//         showInput: true,
-//         showObjectChanges: true,
-//       },
-//     });
-
-//     console.log("Raw transaction result:", JSON.stringify(txResult, null, 2));
-
-//     // Check transaction status
-//     let isSuccess = false;
-//     let statusInfo = 'unknown';
-//     const effects = txResult.effects;
-
-//     if (effects) {
-//       // Check status
-//       if (typeof effects.status === 'string') {
-//         isSuccess = effects.status.toLowerCase() === 'success';
-//         statusInfo = effects.status;
-//       } else if (effects.status && typeof effects.status === 'object') {
-//         const statusObj = effects.status;
-//         if ('status' in statusObj && typeof statusObj.status === 'string') {
-//           isSuccess = statusObj.status.toLowerCase() === 'success';
-//           statusInfo = statusObj.status;
-//         } else if ('Success' in statusObj) {
-//           isSuccess = true;
-//           statusInfo = 'Success';
-//         } else if ('Failure' in statusObj) {
-//           isSuccess = false;
-//           statusInfo = 'Failure';
-//         }
-//       }
-//     }
-
-//     console.log("Transaction status:", { isSuccess, statusInfo });
-//     // === END BOOSTER VERIFICATION BLOCK ===
-
-//     if (!isSuccess) {
-//       return res.json({
-//         success: true,
-//         verified: false,
-//         message: `Transaction found but appears unsuccessful (${statusInfo})`,
-//         transactionHash: transactionHash
-//       });
-//     }
-
-//     // FIXED: Look for binder ID in effects.created array (where it actually is)
-//     let binderId = null;
-
-//     // First, check effects.created (this is where your binder actually is)
-//     if (effects.created && Array.isArray(effects.created)) {
-//       console.log(`Checking ${effects.created.length} created objects in effects...`);
-
-//       for (let i = 0; i < effects.created.length; i++) {
-//         const created = effects.created[i];
-//         const objectId = created?.reference?.objectId;
-//         const owner = created?.owner;
-
-//         if (!objectId) continue;
-
-//         console.log(`Created object ${i}:`, {
-//           objectId: objectId.substring(0, 20) + '...',
-//           owner: owner
-//         });
-
-//         // Check if this object is owned by the user (not shared, not ObjectOwner of another address)
-//         let isUserOwned = false;
-
-//         if (owner && typeof owner === 'object') {
-//           // Check for AddressOwner
-//           if (owner.AddressOwner && owner.AddressOwner === walletAddress) {
-//             isUserOwned = true;
-//           }
-//           // ObjectOwner means it's owned by another object (like a table)
-//           // Shared means it's a shared object
-//           // We want objects directly owned by the user
-//         }
-
-//         // If owned by user, this is likely the binder
-//         if (isUserOwned) {
-//           binderId = objectId;
-//           console.log(`Found user-owned object (likely binder): ${binderId}`);
-//           break;
-//         }
-//       }
-
-//       // Fallback: If we didn't find a user-owned object, look for Shared objects
-//       // (In case your binder is created as a shared object)
-//       if (!binderId) {
-//         for (const created of effects.created) {
-//           const objectId = created?.reference?.objectId;
-//           const owner = created?.owner;
-
-//           if (objectId && owner && typeof owner === 'object' && 'Shared' in owner) {
-//             binderId = objectId;
-//             console.log(`Found shared object (possibly binder): ${binderId}`);
-//             break;
-//           }
-//         }
-//       }
-//     }
-
-//     // Also check objectChanges as backup (even though it's empty in your case)
-//     if (!binderId && txResult.objectChanges && Array.isArray(txResult.objectChanges)) {
-//       console.log(`Checking ${txResult.objectChanges.length} object changes as backup...`);
-
-//       for (const change of txResult.objectChanges) {
-//         const changeType = change && typeof change === 'object' ? change.type : null;
-//         const objectType = change && typeof change === 'object' ? change.objectType : null;
-//         const objectId = change && typeof change === 'object' ? change.objectId : null;
-
-//         if (changeType === 'created' && objectType && objectId) {
-//           const objectTypeStr = String(objectType).toLowerCase();
-
-//           if (objectTypeStr.includes('binder') ||
-//             (SUI_PACKAGE_ID && objectTypeStr.includes(SUI_PACKAGE_ID.toLowerCase()))) {
-//             binderId = objectId;
-//             console.log(`Found binder in objectChanges: ${binderId}`);
-//             break;
-//           }
-//         }
-//       }
-//     }
-
-//     // Fallback: Use first created object that's not a coin
-//     if (!binderId && effects.created && effects.created.length > 0) {
-//       console.log("Using fallback: first non-system created object");
-
-//       for (const created of effects.created) {
-//         const objectId = created?.reference?.objectId;
-
-//         // Skip system objects (those starting with 0x1, 0x2, etc. for system packages)
-//         if (objectId && !objectId.startsWith('0x1') && !objectId.startsWith('0x2')) {
-//           binderId = objectId;
-//           console.log(`Fallback binder ID: ${binderId}`);
-//           break;
-//         }
-//       }
-//     }
-
-//     console.log(`Final binder ID determination: ${binderId || 'NOT FOUND'}`);
-
-//     // Update database if we found a binder
-//     if (binderId) {
-//       try {
-//         const { data: userProfile } = await supabase
-//           .from("user_profiles")
-//           .select("id")
-//           .eq("sui_address", walletAddress)
-//           .single();
-
-//         if (userProfile) {
-//           // Update or create transaction record
-//           const transactionData = {
-//             transaction_hash: transactionHash,
-//             binder_id: binderId,
-//             transaction_status: 'confirmed',
-//             blockchain_verified: true,
-//             updated_at: new Date().toISOString()
-//           };
-
-//           const { data: existingTx } = await supabase
-//             .from("binder_transactions")
-//             .select("id")
-//             .eq('user_profile_id', userProfile.id)
-//             .eq('wallet_address', walletAddress)
-//             .eq('transaction_status', 'pending')
-//             .maybeSingle();
-
-//           if (existingTx) {
-//             await supabase
-//               .from("binder_transactions")
-//               .update(transactionData)
-//               .eq('id', existingTx.id);
-//           } else {
-//             await supabase
-//               .from("binder_transactions")
-//               .insert({
-//                 user_profile_id: userProfile.id,
-//                 wallet_address: walletAddress,
-//                 ...transactionData,
-//                 created_at: new Date().toISOString()
-//               });
-//           }
-
-//           // Update user profile
-//           await supabase
-//             .from("user_profiles")
-//             .update({
-//               active_binder_id: binderId,
-//               binder_verified: true,
-//               binder_transaction_hash: transactionHash,
-//               last_blockchain_sync: new Date().toISOString(),
-//               updated_at: new Date().toISOString()
-//             })
-//             .eq("id", userProfile.id);
-
-//           console.log(`✅ Database updated: Binder ${binderId} verified for user ${walletAddress}`);
-//         }
-//       } catch (dbError) {
-//         console.error("Database update error:", dbError);
-//         // Don't fail the whole request due to database issues
-//       }
-//     }
-
-//     res.json({
-//       success: true,
-//       verified: !!binderId,
-//       binderId: binderId,
-//       transactionHash: transactionHash,
-//       statusInfo: statusInfo,
-//       message: binderId
-//         ? "Binder creation verified and stored successfully"
-//         : "Transaction successful but binder ID could not be determined. Please sync binders manually.",
-//       debugInfo: {
-//         createdObjectsCount: effects?.created?.length || 0,
-//         objectChangesCount: txResult.objectChanges?.length || 0,
-//         firstCreatedObject: effects?.created?.[0]?.reference?.objectId
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error("Transaction verification error:", err);
-//     res.status(500).json({
-//       success: false,
-//       verified: false,
-//       error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
-//     });
-//   }
-// });
-
-
-// Server endpoint to get user's cards
-// app.get("/user-cards/:walletAddress", async (req, res) => {
-//   const { walletAddress } = req.params;
-  
-//   const { data: profile } = await supabase
-//     .from("user_profiles")
-//     .select("id")
-//     .eq("sui_address", walletAddress)
-//     .single();
-    
-//   const { data: cards } = await supabase
-//     .from("user_cards")
-//     .select("*")
-//     .eq("user_profile_id", profile.id)
-//     .order("obtained_at", { ascending: false });
-    
-//   res.json({ success: true, cards });
-// });
