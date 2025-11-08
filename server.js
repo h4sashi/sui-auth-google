@@ -1951,7 +1951,7 @@ app.post("/open-booster", async (req, res) => {
   try {
     // 1. Validate required contract IDs
     if (!SUI_PACKAGE_ID || !GLOBAL_CONFIG_ID || !CATALOG_REGISTRY_ID || 
-        !CARD_REGISTRY_ID || !RANDOM_ID || !CLOCK_ID) {
+        !CARD_REGISTRY_ID) {
       console.error("❌ Contract addresses not configured");
       return res.status(500).json({ 
         success: false, 
@@ -2002,7 +2002,7 @@ app.post("/open-booster", async (req, res) => {
 
     console.log("✅ User profile found:", userProfile.id);
 
-    // 4. Get the unopened booster pack (for validation and DB tracking)
+    // 4. Get the unopened booster pack
     console.log("🔍 Looking for unopened booster...");
     const { data: boosterPack, error: boosterError } = await supabase
       .from("booster_purchases")
@@ -2037,24 +2037,23 @@ app.post("/open-booster", async (req, res) => {
       purchasedAt: boosterPack.purchased_at
     });
 
-    // 5. Build transaction - FIXED VERSION
+    // 5. Build transaction - CORRECTLY THIS TIME
     console.log("🔨 Building open booster transaction...");
     
     const tx = new Transaction();
 
     try {
-      // ✅ CRITICAL FIX: Use tx.object() for binder (SDK handles mutability)
-      // The SDK knows from the function signature that binder should be mutable
+      // ✅ CRITICAL FIX: Use tx.object.random() and tx.object.clock()
       tx.moveCall({
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
         arguments: [
           tx.object(GLOBAL_CONFIG_ID),          // arg 0: &GlobalConfig
           tx.object(CATALOG_REGISTRY_ID),       // arg 1: &CatalogRegistry  
           tx.object(CARD_REGISTRY_ID),          // arg 2: &mut CardRegistry
-          tx.object(binderId),                  // arg 3: &mut Binder ⬅️ SDK handles mutability
+          tx.object(binderId),                  // arg 3: &mut Binder
           tx.pure.string(boosterPackSerial),    // arg 4: String (pack serial)
-          tx.object(RANDOM_ID),                 // arg 5: &Random
-          tx.object(CLOCK_ID),                  // arg 6: &Clock
+          tx.object.random(),                   // arg 5: &Random ⬅️ SPECIAL SYNTAX
+          tx.object.clock(),                    // arg 6: &Clock ⬅️ SPECIAL SYNTAX
         ],
       });
 
@@ -2069,7 +2068,8 @@ app.post("/open-booster", async (req, res) => {
         gasBudget: "150000000 (0.15 SUI)",
         target: `${SUI_PACKAGE_ID}::booster::open_booster`,
         packSerial: boosterPackSerial,
-        binderId: binderId.substring(0, 20) + "..."
+        binderId: binderId.substring(0, 20) + "...",
+        usesRandomAndClockSystemObjects: true
       });
 
     } catch (txBuildError) {
@@ -2107,7 +2107,6 @@ app.post("/open-booster", async (req, res) => {
       console.log(`✅ Booster ${boosterPack.id} marked as 'opening'`);
     } catch (dbUpdateError) {
       console.warn("⚠️ Database update warning:", dbUpdateError.message);
-      // Don't fail the request if DB update fails
     }
 
     // 8. Return success response
@@ -2124,12 +2123,11 @@ app.post("/open-booster", async (req, res) => {
         binderId: binderId.substring(0, 20) + "...",
         boosterPackSerial,
         gasBudget: "0.15 SUI",
-        usesSerialString: true
+        usesSystemObjects: true
       }
     });
 
   } catch (err) {
-    // Catch-all error handler
     console.error("❌ === CRITICAL ERROR IN OPEN BOOSTER ===");
     console.error("Error type:", err.constructor.name);
     console.error("Error message:", err.message);
@@ -2142,7 +2140,6 @@ app.post("/open-booster", async (req, res) => {
     });
   }
 });
-
 
 
 // Add this debug endpoint
