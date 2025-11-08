@@ -2143,6 +2143,79 @@ app.post("/open-booster", async (req, res) => {
   }
 });
 
+
+
+// Add this debug endpoint
+app.post("/verify-binder-ownership", async (req, res) => {
+  const { walletAddress, binderId } = req.body;
+  
+  try {
+    console.log(`🔍 Verifying binder ${binderId} for ${walletAddress}`);
+    
+    // Fetch the binder object from blockchain
+    const binderObject = await suiClient.getObject({
+      id: binderId,
+      options: { 
+        showOwner: true, 
+        showType: true,
+        showContent: true 
+      }
+    });
+    
+    if (!binderObject.data) {
+      return res.json({
+        success: false,
+        error: "Binder not found on blockchain",
+        binderId
+      });
+    }
+    
+    // Check ownership
+    const owner = binderObject.data.owner;
+    let isOwnedByUser = false;
+    
+    if (owner && typeof owner === 'object') {
+      if (owner.AddressOwner === walletAddress) {
+        isOwnedByUser = true;
+      }
+    }
+    
+    // Check if it's actually a Binder type
+    const objectType = binderObject.data.type;
+    const isBinderType = objectType && objectType.includes('::binder::Binder');
+    
+    console.log("Binder verification:", {
+      exists: true,
+      isOwnedByUser,
+      isBinderType,
+      objectType,
+      owner
+    });
+    
+    res.json({
+      success: true,
+      binderId,
+      exists: true,
+      isOwnedByUser,
+      isCorrectType: isBinderType,
+      objectType,
+      owner,
+      canOpenBooster: isOwnedByUser && isBinderType
+    });
+    
+  } catch (err) {
+    console.error("Binder verification error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+
+
+
+
 // Debug endpoints remain the same
 app.get("/debug-booster/:walletAddress/:boosterSerial", async (req, res) => {
   const { walletAddress, boosterSerial } = req.params;
