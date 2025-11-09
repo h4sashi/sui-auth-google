@@ -1428,20 +1428,6 @@ app.post("/verify-transaction", async (req, res) => {
       error: "Verification failed: " + (err instanceof Error ? err.message : String(err))
     });
   }
-
-  // In your verify-transaction endpoint, after detecting booster purchase:
-if (boosterPackObjectId) {
-  await supabase
-    .from("booster_purchases")
-    .update({
-      transaction_hash: transactionHash,
-      booster_pack_object_id: boosterPackObjectId, // ✅ Store this!
-      purchase_status: 'completed',
-      blockchain_verified: true,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", pendingBooster.id);
-}
   // === BOOSTER OPENING VERIFICATION ===
   try {
     // Check if this transaction opened a booster
@@ -2181,7 +2167,7 @@ app.post("/open-booster", async (req, res) => {
   
   try {
     if (!SUI_PACKAGE_ID || !GLOBAL_CONFIG_ID || !CATALOG_REGISTRY_ID || 
-        !CARD_REGISTRY_ID || !RANDOM_ID || !CLOCK_ID) {
+        !CARD_REGISTRY_ID) {
       return res.status(500).json({ 
         success: false, 
         error: "Sui contract addresses not configured." 
@@ -2211,10 +2197,10 @@ app.post("/open-booster", async (req, res) => {
       });
     }
 
-    // ✅ CRITICAL FIX: Get the actual booster pack object ID
+    // Get the unopened booster (for validation)
     const { data: boosterPack, error: boosterError } = await supabase
       .from("booster_purchases")
-      .select("booster_pack_object_id, booster_pack_serial, id")
+      .select("*")
       .eq("user_profile_id", userProfile.id)
       .eq("booster_pack_serial", boosterPackSerial)
       .eq("is_opened", false)
@@ -2223,32 +2209,31 @@ app.post("/open-booster", async (req, res) => {
       .limit(1)
       .maybeSingle();
 
-    if (!boosterPack || !boosterPack.booster_pack_object_id) {
+    if (!boosterPack) {
       return res.status(404).json({
         success: false,
-        error: "No unopened booster pack found or booster object ID missing"
+        error: "No unopened booster pack found with this serial"
       });
     }
 
-    console.log("✅ Found booster pack object:", {
+    console.log("✅ Found unopened booster:", {
       id: boosterPack.id,
-      objectId: boosterPack.booster_pack_object_id,
       serial: boosterPackSerial
     });
 
-    // ✅ Build transaction with OBJECT ID, not serial string
+    // ✅ Build transaction with CORRECT argument types
     const tx = new Transaction();
 
     tx.moveCall({
       target: `${SUI_PACKAGE_ID}::booster::open_booster`,
       arguments: [
-        tx.object(GLOBAL_CONFIG_ID),
-        tx.object(CATALOG_REGISTRY_ID),
-        tx.object(CARD_REGISTRY_ID),
-        tx.object(binderId),
-        tx.object(boosterPack.booster_pack_object_id), // ✅ Use object ID!
-        tx.object(RANDOM_ID),
-        tx.object(CLOCK_ID),
+        tx.object(GLOBAL_CONFIG_ID),      // arg 0: &GlobalConfig
+        tx.object(CATALOG_REGISTRY_ID),   // arg 1: &CatalogRegistry
+        tx.object(CARD_REGISTRY_ID),      // arg 2: &mut CardRegistry
+        tx.object(binderId),              // arg 3: &mut Binder
+        tx.pure.string(boosterPackSerial), // arg 4: String (pack serial)
+        tx.object.random(),               // arg 5: &Random ✅ FIXED
+        tx.object.clock(),                // arg 6: &Clock ✅ FIXED
       ],
     });
 
@@ -2272,10 +2257,14 @@ app.post("/open-booster", async (req, res) => {
       message: "Open booster transaction prepared successfully",
       txBlock: serializedTx,
       boosterPackId: boosterPack.id,
-      boosterObjectId: boosterPack.booster_pack_object_id,
+      boosterPackSerial: boosterPackSerial,
       debug: {
-        usesObjectId: true,
-        boosterSerial: boosterPackSerial
+        walletAddress: walletAddress.substring(0, 20) + "...",
+        binderId: binderId.substring(0, 20) + "...",
+        boosterPackSerial,
+        gasBudget: "0.15 SUI",
+        usesSerialString: true,
+        usesRandomClock: true
       }
     });
 
@@ -2287,6 +2276,7 @@ app.post("/open-booster", async (req, res) => {
     });
   }
 });
+
 
 
 
